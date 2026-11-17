@@ -1,0 +1,9 @@
+## Interface: 16001
+## AllowLoadGameType: camelot
+## Title: Cast Count
+## Notes: Shows on each action button how many times you can cast it with your current power.
+## Category: Action Bars
+## Version: 1.0.0
+## DefaultState: enabled
+
+CastCount.lua
