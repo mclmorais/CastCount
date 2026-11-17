@@ -18,12 +18,26 @@ Copy this folder into `World of Warcraft\_forever_\Interface\AddOns\CastCount` a
 
 `/castcount` prints how many buttons were found, how many have a cost, whether power is hidden, and what the client returns for the first three filled buttons.
 
-## Tests
+## Verify in the simulator
 
-`tests/castcount.lua` runs in [wow-ui-sim](https://github.com/Osso/wow-ui-sim) with its Forever build:
+Cast Count is checked in [wow-ui-sim](https://github.com/Osso/wow-ui-sim). Download its Forever build (`wow-ui-sim-<version>-forever-windows-x86_64.zip` from the releases page), unzip it, and point `WOW_SIM` at `wow-sim.exe` in a `.env` file at the repo root (gitignored):
 
 ```
-wow-sim --no-saved-vars --allow-ui-version-mismatch --addons-path <folder containing CastCount> run-tests CastCount
+WOW_SIM=C:\path\to\wow-ui-sim-forever\wow-sim.exe
 ```
 
-The simulator does not hide the player's power, so these tests cover the readable-power path only.
+`$env:WOW_SIM` and `-Sim` override the file.
+
+Then, from this folder:
+
+| Command | What it does |
+| --- | --- |
+| `.\scripts\sim.ps1 test` | Runs `tests/*.lua` headless. Fails on a failed test or on any Lua error raised in `CastCount.lua`, which the simulator's test runner alone does not count as a failure. |
+| `.\scripts\sim.ps1 gui` | Opens the simulator window with Cast Count loaded and [scripts/sim-demo.lua](scripts/sim-demo.lua) applied: a mage at 1000 mana, Fireball in slots 1 and 3 (shows 20), Frostbolt in slot 2 (shows 10). |
+| `.\scripts\sim.ps1 screenshot` | Renders that scene headless to `.sim/screenshot.png` (`-Output` to change it, `-Crop bar` for just the main action bar). |
+
+`-Class Warrior` picks another class; `-Sim` overrides `WOW_SIM`. The script links this folder into a temp addons root as `CastCount`, so the checkout can have any name.
+
+Claude Code sessions in this repo have a `sim-verify` skill ([.claude/skills/sim-verify](.claude/skills/sim-verify/SKILL.md)). It runs the tests, renders the action bar, and has Claude read the numbers off the image.
+
+The simulator does not hide the player's power, so these checks cover the readable-power path only.
