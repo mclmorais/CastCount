@@ -4,7 +4,7 @@
     "workspace.library": [".tools/wow-api/Annotations/Core"],
     "workspace.ignoreDir": [".tools", ".sim", "tests", "scripts"],
     "workspace.checkThirdParty": false,
-    "diagnostics.globals": ["SLASH_CASTCOUNT1", "SlashCmdList", "CastCountDB", "Settings", "MinimalSliderWithSteppersMixin", "PowerBarColor"],
+    "diagnostics.globals": ["SLASH_CASTCOUNT1", "SlashCmdList", "CastCountDB", "Settings", "MinimalSliderWithSteppersMixin"],
     "diagnostics.neededFileStatus": {
         "missing-parameter": "Any",
         "redundant-parameter": "Any",

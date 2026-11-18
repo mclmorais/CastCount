@@ -23,11 +23,11 @@ Open Esc > Options > AddOns > Cast Count.
 | Option | What it does |
 | --- | --- |
 | Show cast counts | Turns the display on or off. Off hides it and stops all work until you turn it back on. |
-| Display | Pip bar or Number. Default Pip bar: a column of pips at the button's left edge, pip 1 at the top, one lit per cast, so the bottom pips go dark first. Lit pips take the power type's color (blue for mana, red for rage, yellow for energy). |
+| Display | Pip bar or Number. Default Pip bar: a column of pips at the button's left edge, pip 1 at the top, one lit per cast, so the bottom pips go dark first. |
 | Maximum pips | Pips in the pip bar, 1 to 10. Default 6. With more casts than pips, all are lit and a + shows beside the bottom pip. |
 | Decimal places | Number only. 0, 1 or 2 decimals (3, 3.7, 3.75), still rounded down. Default 0. |
 | Font | Font of the number and of the pip bar's +. Default Arial Narrow. Lists every font registered with LibSharedMedia when an addon that embeds it is loaded (Bartender4, Questie, ...), else the four built-in fonts. A saved font whose file is gone falls back to Arial Narrow. |
-| Color | Color of the number and of the pip bar's +. Default white. |
+| Color | Color of the number, or of the pip bar's lit pips and +. Default white. |
 | Font size | Height of the number, 6 to 24. Default 12. |
 | Horizontal offset | Pixels from the button's left edge to the number or pip bar, 0 to 40. Default 2. |
 | Vertical offset | Pixels down from the button's top edge to the number or pip bar, 0 to 40. Default 2. The pip bar leaves the same gap at the bottom. |

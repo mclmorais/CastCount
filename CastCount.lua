@@ -37,7 +37,7 @@ local OPTIONS = {
     { key = "font", varType = Settings.VarType.String, name = "Font", default = DEFAULT_FONT, control = "dropdown",
       tooltip = "Font of the number and of the pip bar's +. Lists fonts registered with LibSharedMedia when another addon loads it." },
     { key = "color", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
-      tooltip = "Color of the number and of the pip bar's +. Lit pips take the color of the spell's power type." },
+      tooltip = "Color of the number, or of the lit pips and the + of the pip bar." },
     { key = "size", varType = Settings.VarType.Number, name = "Font size", default = 12, control = "slider", min = 6, max = 24,
       tooltip = "Height of the number in pixels." },
     { key = "x", varType = Settings.VarType.Number, name = "Horizontal offset", default = 2, control = "slider", min = 0, max = 40,
@@ -183,6 +183,7 @@ local function newPip(column)
     slot:SetColorTexture(SLOT_SHADE, SLOT_SHADE, SLOT_SHADE, 1)
     pip.fill = pip:CreateTexture(nil, "ARTWORK")
     pip.fill:SetAllPoints()
+    pip.fill:SetColorTexture(1, 1, 1, 1)
     pip.fill:SetAlpha(0)
     return pip
 end
@@ -213,8 +214,9 @@ local function layoutColumn(column)
     end
     local plus = column.plus
     if not plus:SetFont(db.font, PLUS_SIZE, fontFlags) then plus:SetFont(DEFAULT_FONT, PLUS_SIZE, fontFlags) end
-    plus:SetTextColor(CreateColorFromHexString(db.color):GetRGB())
-    column.powerType = nil
+    local r, g, b = CreateColorFromHexString(db.color):GetRGB()
+    plus:SetTextColor(r, g, b)
+    for _, pip in ipairs(column.pips) do pip.fill:SetVertexColor(r, g, b) end
 end
 
 local function columnOf(button)
@@ -233,21 +235,11 @@ local function columnOf(button)
     return column
 end
 
-local function colorColumn(column, powerType)
-    if column.powerType == powerType then return end
-    column.powerType = powerType
-    local color = PowerBarColor and PowerBarColor[powerType]
-    local r, g, b = 1, 1, 1
-    if color then r, g, b = color.r, color.g, color.b end
-    for _, pip in ipairs(column.pips) do pip.fill:SetColorTexture(r, g, b, 1) end
-end
-
 -- lit counts the + as one more pip, so it runs 0 .. db.pips + 1.
-local function showPips(button, powerType, lit)
+local function showPips(button, lit)
     if shown[button] == lit then return end
     shown[button] = lit
     local column = columnOf(button)
-    colorColumn(column, powerType)
     for k = 1, db.pips do column.pips[k].fill:SetAlpha(k <= lit and 1 or 0) end
     column.plus:SetAlpha(lit > db.pips and 1 or 0)
     column:Show()
@@ -318,10 +310,9 @@ end
 
 local alphas = {} -- reused: pip k -> hidden alpha, k = db.pips + 1 is the +
 
-local function showPipsHidden(button, powerType)
+local function showPipsHidden(button)
     shown[button] = HIDDEN
     local column = columnOf(button)
-    colorColumn(column, powerType)
     for k = 1, db.pips do pcall(column.pips[k].fill.SetAlpha, column.pips[k].fill, alphas[k]) end
     pcall(column.plus.SetAlpha, column.plus, alphas[db.pips + 1])
     column:Show()
@@ -337,7 +328,7 @@ local function refresh(powerType)
         for amount, buttons in pairs(byCost) do
             if pips then
                 local lit = min(floor(power / amount), db.pips + 1)
-                for button in pairs(buttons) do showPips(button, powerType, lit) end
+                for button in pairs(buttons) do showPips(button, lit) end
             else
                 local text = format(textFormat, floor(power * scale / amount) / scale)
                 for button in pairs(buttons) do show(button, text) end
@@ -357,7 +348,7 @@ local function refresh(powerType)
                 alphas[k] = value
             end
             if ok then
-                for button in pairs(buttons) do showPipsHidden(button, powerType) end
+                for button in pairs(buttons) do showPipsHidden(button) end
             end
         else
             local ok, casts = pcall(UnitPowerPercent, "player", powerType, false, curveFor(amount, powerMax))
