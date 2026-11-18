@@ -66,7 +66,7 @@ local DISPLAYS = {
     [0] = { decimals = 0, label = "None (3)" },
     [1] = { decimals = 1, label = "One (3.7)" },
     [2] = { decimals = 2, label = "Two (3.75)" },
-    [3] = { decimals = 1, belowOne = true, label = "Only below 1 (3, .7)" },
+    [3] = { decimals = 1, belowOne = true, label = "Only below 1 (.7)" },
 }
 
 -- At the default offset the leading dot of ".9" sits on the button border and the count reads as 9.
