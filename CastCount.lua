@@ -15,6 +15,31 @@ local BARS = {
     "MultiBarLeft", "MultiBar5", "MultiBar6", "MultiBar7",
 }
 
+local DEFAULT_FONT = "Fonts\\ARIALN.TTF"
+local BUILTIN_FONTS = {
+    { name = "Arial Narrow", path = DEFAULT_FONT },
+    { name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
+    { name = "Morpheus", path = "Fonts\\MORPHEUS.TTF" },
+    { name = "Skurri", path = "Fonts\\SKURRI.TTF" },
+}
+
+local OPTIONS = {
+    { key = "enabled", varType = Settings.VarType.Boolean, name = "Show cast counts", default = true,
+      tooltip = "Show how many casts each action button can afford." },
+    { key = "font", varType = Settings.VarType.String, name = "Font", default = DEFAULT_FONT, control = "dropdown",
+      tooltip = "Font of the number. Lists fonts registered with LibSharedMedia when another addon loads it." },
+    { key = "color", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
+      tooltip = "Color of the number." },
+    { key = "size", varType = Settings.VarType.Number, name = "Font size", default = 12, control = "slider", min = 6, max = 24,
+      tooltip = "Height of the number in pixels." },
+    { key = "x", varType = Settings.VarType.Number, name = "Horizontal offset", default = 2, control = "slider", min = 0, max = 40,
+      tooltip = "Distance from the left edge of the button." },
+    { key = "y", varType = Settings.VarType.Number, name = "Vertical offset", default = 2, control = "slider", min = 0, max = 40,
+      tooltip = "Distance from the top edge of the button." },
+}
+
+local db = {}
+
 local function readable(v)
     return v ~= nil and not issecret(v)
 end
@@ -37,6 +62,7 @@ local costOf = {}  -- button -> { powerType, amount }; nil when the button costs
 local byType = {}  -- powerType -> { [button] = amount }
 local labels = {}  -- button -> FontString
 local shown = {}   -- button -> count on its label now
+local fontFlags
 
 local function validSlot(v)
     v = readNumber(tonumber(v))
@@ -88,6 +114,14 @@ local function readCost(spellId)
     end
 end
 
+local function style(label)
+    local r, g, b = CreateColorFromHexString(db.color):GetRGB()
+    if not label:SetFont(db.font, db.size, fontFlags) then label:SetFont(DEFAULT_FONT, db.size, fontFlags) end
+    label:SetTextColor(r, g, b)
+    label:ClearAllPoints()
+    label:SetPoint("TOPLEFT", db.x, -db.y)
+end
+
 local function labelOf(button)
     local label = labels[button]
     if not label then
@@ -95,7 +129,8 @@ local function labelOf(button)
         holder:SetAllPoints(button)
         holder:SetFrameLevel(button:GetFrameLevel() + 10)
         label = holder:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-        label:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
+        if not fontFlags then fontFlags = select(3, label:GetFont()) end
+        style(label)
         labels[button] = label
     end
     return label
@@ -133,6 +168,7 @@ local function showHidden(button, value)
 end
 
 local function refresh(powerType)
+    if not db.enabled then return end
     local byCost = byType[powerType]
     if not byCost then return end
     local power = readNumber(UnitPower("player", powerType))
@@ -154,6 +190,7 @@ local function refresh(powerType)
 end
 
 local function rebuild()
+    if not db.enabled then return end
     wipe(byType)
     for _, name in pairs(buttonNames) do
         local button = _G[name]
@@ -189,9 +226,59 @@ local function scheduleRebuild()
     end)
 end
 
+local function restyleAll()
+    for _, label in pairs(labels) do style(label) end
+end
+
+local function setEnabled(on)
+    for _, label in pairs(labels) do label:GetParent():SetShown(on) end
+    if on then rebuild() end
+end
+
+local function fontChoices()
+    local choices = Settings.CreateControlTextContainer()
+    local media = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if media then
+        for _, name in ipairs(media:List("font")) do choices:Add(media:Fetch("font", name), name) end
+    else
+        for _, font in ipairs(BUILTIN_FONTS) do choices:Add(font.path, font.name) end
+    end
+    return choices:GetData()
+end
+
+local function registerOptions()
+    CastCountDB = CastCountDB or {}
+    db = CastCountDB
+    local category = Settings.RegisterVerticalLayoutCategory("Cast Count")
+    for _, option in ipairs(OPTIONS) do
+        if db[option.key] == nil then db[option.key] = option.default end
+        local setting = Settings.RegisterAddOnSetting(category, "CastCount_" .. option.key, option.key, db,
+            option.varType, option.name, option.default)
+        setting:SetValueChangedCallback(option.key == "enabled" and function(_, on) setEnabled(on) end or restyleAll)
+        if option.control == "slider" then
+            local range = Settings.CreateSliderOptions(option.min, option.max, 1)
+            range:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
+            Settings.CreateSlider(category, setting, range, option.tooltip)
+        elseif option.control == "dropdown" then
+            Settings.CreateDropdown(category, setting, fontChoices, option.tooltip)
+        elseif option.control == "color" then
+            Settings.CreateColorSwatch(category, setting, option.tooltip)
+        else
+            Settings.CreateCheckbox(category, setting, option.tooltip)
+        end
+    end
+    Settings.RegisterAddOnCategory(category)
+end
+
 local frame = CreateFrame("Frame")
-frame:SetScript("OnEvent", function(_, event, _, token)
-    if event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" then
+frame:RegisterEvent("ADDON_LOADED")
+frame:SetScript("OnEvent", function(_, event, arg1, token)
+    if event == "ADDON_LOADED" then
+        if arg1 == "CastCount" then
+            frame:UnregisterEvent("ADDON_LOADED")
+            registerOptions()
+        end
+    elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" then
         local powerType = TYPE_OF_TOKEN[token]
         if powerType then refresh(powerType) end
     else

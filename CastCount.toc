@@ -5,5 +5,6 @@
 ## Category: Action Bars
 ## Version: 1.0.0
 ## DefaultState: enabled
+## SavedVariables: CastCountDB
 
 CastCount.lua
