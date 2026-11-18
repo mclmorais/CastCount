@@ -1,9 +1,11 @@
--- Puts a mage with 1000 / 5000 mana and some spells on the main bar, so Cast Count has numbers to draw.
--- Expected: Fireball (slots 1 and 3) shows 20, Frostbolt (slot 2) shows 10.
-local FIREBALL, FROSTBOLT = 133, 116
+-- Puts a mage with 400 / 5000 mana and some spells on the main bar, so Cast Count has something to draw.
+-- Expected with the pip bar (default, 6 pips): Auto Attack (slot 1, no cost) no pips,
+-- Fireball (slot 2, 8 casts) all 6 lit and a +, Frostbolt (slot 3, 4 casts) the top 4 lit.
+-- With the number display: nothing, 8, 4.
+local FIREBALL, FROSTBOLT, AUTO_ATTACK = 133, 116, 6603
 
-A_Admin.SetPlayerPower(1000, 5000, 0)
-for slot, spellId in ipairs({ FIREBALL, FROSTBOLT, FIREBALL }) do
+A_Admin.SetPlayerPower(400, 5000, 0)
+for slot, spellId in ipairs({ AUTO_ATTACK, FIREBALL, FROSTBOLT }) do
     A_Admin.SetActionSlot(slot, spellId)
     A_Admin.FireEvent("ACTIONBAR_SLOT_CHANGED", slot)
 end

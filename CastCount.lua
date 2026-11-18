@@ -1,5 +1,5 @@
 -- Expensive reads (action slots, spell costs) happen only when the bars change, debounced.
--- A power change only divides the cached costs of that power type and touches text that changed.
+-- A power change only divides the cached costs of that power type and touches labels or pips that changed.
 
 local floor, max, min, format = math.floor, math.max, math.min, string.format
 local pairs, pcall, type, tonumber, tostring, wipe = pairs, pcall, type, tonumber, tostring, wipe
@@ -28,18 +28,30 @@ local BUILTIN_FONTS = {
 local OPTIONS = {
     { key = "enabled", varType = Settings.VarType.Boolean, name = "Show cast counts", default = true,
       tooltip = "Show how many casts each action button can afford." },
+    { key = "display", varType = Settings.VarType.String, name = "Display", default = "pips", control = "dropdown",
+      tooltip = "Pip bar: a column of pips, one per cast. Number: the count as text." },
+    { header = "Pip bar" },
+    { key = "pips", varType = Settings.VarType.Number, name = "Maximum pips", default = 6, control = "slider", min = 1, max = 10,
+      shows = "pips", tooltip = "Pips in the pip bar. With more casts than pips, all are lit and a + shows beside the last one." },
+    { key = "pipColor", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
+      shows = "pips", tooltip = "Color of the lit pips and the +." },
+    { key = "pipX", varType = Settings.VarType.Number, name = "Horizontal offset", default = 2, control = "slider", min = 0, max = 40,
+      shows = "pips", tooltip = "Distance of the pip bar from the left edge of the button." },
+    { key = "pipY", varType = Settings.VarType.Number, name = "Vertical offset", default = 2, control = "slider", min = 0, max = 40,
+      shows = "pips", tooltip = "Distance of the pip bar from the top edge of the button. It keeps the same gap at the bottom." },
+    { header = "Number" },
     { key = "decimals", varType = Settings.VarType.Number, name = "Decimal places", default = 0, control = "dropdown",
-      tooltip = "How many decimal places each count shows. Counts are always rounded down, so 0.9 casts shows as 0." },
+      shows = "number", tooltip = "How many decimal places the number shows. Counts are always rounded down, so 0.9 casts shows as 0." },
     { key = "font", varType = Settings.VarType.String, name = "Font", default = DEFAULT_FONT, control = "dropdown",
-      tooltip = "Font of the number. Lists fonts registered with LibSharedMedia when another addon loads it." },
-    { key = "color", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
-      tooltip = "Color of the number." },
+      shows = "number", tooltip = "Font of the number. Lists fonts registered with LibSharedMedia when another addon loads it." },
     { key = "size", varType = Settings.VarType.Number, name = "Font size", default = 12, control = "slider", min = 6, max = 24,
-      tooltip = "Height of the number in pixels." },
+      shows = "number", tooltip = "Height of the number in pixels." },
+    { key = "color", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
+      shows = "number", tooltip = "Color of the number." },
     { key = "x", varType = Settings.VarType.Number, name = "Horizontal offset", default = 2, control = "slider", min = 0, max = 40,
-      tooltip = "Distance from the left edge of the button." },
+      shows = "number", tooltip = "Distance of the number from the left edge of the button." },
     { key = "y", varType = Settings.VarType.Number, name = "Vertical offset", default = 2, control = "slider", min = 0, max = 40,
-      tooltip = "Distance from the top edge of the button." },
+      shows = "number", tooltip = "Distance of the number from the top edge of the button." },
 }
 
 local db = {}
@@ -72,8 +84,10 @@ end
 
 local costOf = {}  -- button -> { powerType, amount }; nil when the button costs nothing
 local byType = {}  -- powerType -> { [button] = amount }
+local holders = {} -- button -> Frame over the button that holds its label and pip column
 local labels = {}  -- button -> FontString
-local shown = {}   -- button -> count on its label now
+local columns = {} -- button -> pip column Frame, with .pips (Frames, each with .fill) and .plus (FontString)
+local shown = {}   -- button -> what it shows now: label text, or lit pip count (pips + 1 means the + too)
 local fontFlags
 
 local function validSlot(v)
@@ -134,13 +148,21 @@ local function style(label)
     label:SetPoint("TOPLEFT", db.x, -db.y)
 end
 
+local function holderOf(button)
+    local holder = holders[button]
+    if not holder then
+        holder = CreateFrame("Frame", nil, button)
+        holder:SetAllPoints(button)
+        holder:SetFrameLevel(button:GetFrameLevel() + 10)
+        holders[button] = holder
+    end
+    return holder
+end
+
 local function labelOf(button)
     local label = labels[button]
     if not label then
-        local holder = CreateFrame("Frame", nil, button)
-        holder:SetAllPoints(button)
-        holder:SetFrameLevel(button:GetFrameLevel() + 10)
-        label = holder:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        label = holderOf(button):CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
         if not fontFlags then fontFlags = select(3, label:GetFont()) end
         style(label)
         labels[button] = label
@@ -152,6 +174,91 @@ local function show(button, count)
     if shown[button] == count then return end
     shown[button] = count
     labelOf(button):SetText(count or "")
+end
+
+-- Sizes are for a 45px button and scale with it.
+local BASE_SIZE, PIP_WIDTH, PIP_GAP, PLUS_SIZE = 45, 7, 2, 10
+local SLOT_SHADE = 0.12
+local STATUSBAR = "Interface\\TargetingFrame\\UI-StatusBar" -- the health and mana bars' gradient, tinted by Color
+
+local function newPip(column)
+    local pip = CreateFrame("Frame", nil, column)
+    local outline = pip:CreateTexture(nil, "BACKGROUND")
+    outline:SetPoint("TOPLEFT", -1, 1)
+    outline:SetPoint("BOTTOMRIGHT", 1, -1)
+    outline:SetColorTexture(0, 0, 0, 1)
+    local slot = pip:CreateTexture(nil, "BORDER")
+    slot:SetAllPoints()
+    slot:SetColorTexture(SLOT_SHADE, SLOT_SHADE, SLOT_SHADE, 1)
+    pip.fill = pip:CreateTexture(nil, "ARTWORK")
+    pip.fill:SetAllPoints()
+    pip.fill:SetTexture(STATUSBAR)
+    pip.fill:SetAlpha(0)
+    return pip
+end
+
+-- Whole pixels, so every pip and gap draws the same height. Pip 1 is at the top.
+local function layoutColumn(column)
+    local size = column:GetParent():GetHeight()
+    if not size or size <= 0 then size = BASE_SIZE end
+    local count = db.pips
+    local width = max(3, floor(size * PIP_WIDTH / BASE_SIZE + 0.5))
+    local gap = max(1, floor(size * PIP_GAP / BASE_SIZE + 0.5))
+    local height = max(1, floor((size - 2 * db.pipY - gap * (count - 1)) / count))
+    column:ClearAllPoints()
+    column:SetPoint("TOPLEFT", db.pipX, -db.pipY)
+    column:SetSize(width, count * height + (count - 1) * gap)
+    for k = 1, max(count, #column.pips) do
+        local pip = column.pips[k]
+        if k <= count then
+            pip = pip or newPip(column)
+            column.pips[k] = pip
+            pip:ClearAllPoints()
+            pip:SetPoint("TOPLEFT", 0, -(k - 1) * (height + gap))
+            pip:SetSize(width, height)
+            pip:Show()
+        else
+            pip:Hide()
+        end
+    end
+    local plus = column.plus
+    plus:SetFont(DEFAULT_FONT, PLUS_SIZE, fontFlags)
+    local r, g, b = CreateColorFromHexString(db.pipColor):GetRGB()
+    plus:SetTextColor(r, g, b)
+    for _, pip in ipairs(column.pips) do pip.fill:SetVertexColor(r, g, b) end
+end
+
+local function columnOf(button)
+    local column = columns[button]
+    if not column then
+        column = CreateFrame("Frame", nil, holderOf(button))
+        column.pips = {}
+        column.plus = column:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+        column.plus:SetPoint("BOTTOMLEFT", column, "BOTTOMRIGHT", 1, -1)
+        column.plus:SetText("+")
+        column.plus:SetAlpha(0)
+        if not fontFlags then fontFlags = select(3, column.plus:GetFont()) end
+        layoutColumn(column)
+        columns[button] = column
+    end
+    return column
+end
+
+-- lit counts the + as one more pip, so it runs 0 .. db.pips + 1.
+local function showPips(button, lit)
+    if shown[button] == lit then return end
+    shown[button] = lit
+    local column = columnOf(button)
+    for k = 1, db.pips do column.pips[k].fill:SetAlpha(k <= lit and 1 or 0) end
+    column.plus:SetAlpha(lit > db.pips and 1 or 0)
+    column:Show()
+end
+
+local function clear(button)
+    if shown[button] == nil then return end
+    shown[button] = nil
+    if labels[button] then labels[button]:SetText("") end
+    if columns[button] then columns[button]:Hide() end
 end
 
 -- Forever hides UnitPower from addons. A curve over the power fraction (0..1 -> 0..max/cost) lets the client
@@ -186,24 +293,77 @@ local function showHidden(button, value)
     if not pcall(label.SetFormattedText, label, textFormat, value) then pcall(label.SetText, label, value) end
 end
 
+-- Pip k is lit once power reaches k * cost. Its curve is 0 up to one power point below that and 1 from it on,
+-- so whole power values only ever give 0 or 1. The hidden result goes to the fill's alpha, which takes secrets.
+local steps = {} -- "need:max" -> curve
+local LINEAR = Enum.LuaCurveType and Enum.LuaCurveType.Linear
+
+local function stepFor(need, powerMax)
+    local key = need .. ":" .. powerMax
+    local curve = steps[key]
+    if not curve then
+        curve = C_CurveUtil.CreateCurve()
+        if curve.SetType and LINEAR then curve:SetType(LINEAR) end
+        curve:AddPoint(0, 0)
+        if need > powerMax then
+            curve:AddPoint(1, 0)
+        else
+            if need > 1 then curve:AddPoint((need - 1) / powerMax, 0) end
+            curve:AddPoint(need / powerMax, 1)
+            if need < powerMax then curve:AddPoint(1, 1) end
+        end
+        steps[key] = curve
+    end
+    return curve
+end
+
+local alphas = {} -- reused: pip k -> hidden alpha, k = db.pips + 1 is the +
+
+local function showPipsHidden(button)
+    shown[button] = HIDDEN
+    local column = columnOf(button)
+    for k = 1, db.pips do pcall(column.pips[k].fill.SetAlpha, column.pips[k].fill, alphas[k]) end
+    pcall(column.plus.SetAlpha, column.plus, alphas[db.pips + 1])
+    column:Show()
+end
+
 local function refresh(powerType)
     if not db.enabled then return end
     local byCost = byType[powerType]
     if not byCost then return end
+    local pips = db.display == "pips"
     local power = readNumber(UnitPower("player", powerType))
     if power then
         for amount, buttons in pairs(byCost) do
-            local text = format(textFormat, floor(power * scale / amount) / scale)
-            for button in pairs(buttons) do show(button, text) end
+            if pips then
+                local lit = min(floor(power / amount), db.pips + 1)
+                for button in pairs(buttons) do showPips(button, lit) end
+            else
+                local text = format(textFormat, floor(power * scale / amount) / scale)
+                for button in pairs(buttons) do show(button, text) end
+            end
         end
         return
     end
     local powerMax = readNumber(UnitPowerMax("player", powerType))
     if not powerMax or powerMax <= 0 or not UnitPowerPercent or not C_CurveUtil then return end
     for amount, buttons in pairs(byCost) do
-        local ok, casts = pcall(UnitPowerPercent, "player", powerType, false, curveFor(amount, powerMax))
-        if ok and casts ~= nil then
-            for button in pairs(buttons) do showHidden(button, casts) end
+        if pips then
+            local ok = true
+            for k = 1, db.pips + 1 do
+                local value
+                ok, value = pcall(UnitPowerPercent, "player", powerType, false, stepFor(k * amount, powerMax))
+                if not ok or value == nil then ok = false break end
+                alphas[k] = value
+            end
+            if ok then
+                for button in pairs(buttons) do showPipsHidden(button) end
+            end
+        else
+            local ok, casts = pcall(UnitPowerPercent, "player", powerType, false, curveFor(amount, powerMax))
+            if ok and casts ~= nil then
+                for button in pairs(buttons) do showHidden(button, casts) end
+            end
         end
     end
 end
@@ -227,8 +387,8 @@ local function rebuild()
                 byType[cost.powerType] = byCost
                 byCost[cost.amount] = byCost[cost.amount] or {}
                 byCost[cost.amount][button] = true
-            elseif shown[button] then
-                show(button, nil)
+            else
+                clear(button)
             end
         end
     end
@@ -245,19 +405,44 @@ local function scheduleRebuild()
     end)
 end
 
+local function refreshAll()
+    for powerType in pairs(byType) do refresh(powerType) end
+end
+
 local function restyleAll()
     for _, label in pairs(labels) do style(label) end
+    for _, column in pairs(columns) do layoutColumn(column) end
+end
+
+local function setPipCount()
+    restyleAll()
+    wipe(shown)
+    refreshAll()
+end
+
+-- Blanks every label and column so the next refresh draws only the chosen display.
+local function setDisplay()
+    for button in pairs(shown) do clear(button) end
+    for _, label in pairs(labels) do label:SetShown(db.display ~= "pips") end
+    refreshAll()
 end
 
 local function setEnabled(on)
-    for _, label in pairs(labels) do label:GetParent():SetShown(on) end
+    for _, holder in pairs(holders) do holder:SetShown(on) end
     if on then rebuild() end
 end
 
 local function applyDecimals(v)
     setDecimals(v)
     wipe(curves)
-    for powerType in pairs(byType) do refresh(powerType) end
+    refreshAll()
+end
+
+local function displayChoices()
+    local choices = Settings.CreateControlTextContainer()
+    choices:Add("pips", "Pip bar")
+    choices:Add("number", "Number")
+    return choices:GetData()
 end
 
 local function decimalChoices()
@@ -282,33 +467,53 @@ end
 local onChange = {
     enabled = function(_, on) setEnabled(on) end,
     decimals = function(_, v) applyDecimals(v) end,
+    display = setDisplay,
+    pips = setPipCount,
 }
-local choicesOf = { font = fontChoices, decimals = decimalChoices }
+local choicesOf = { font = fontChoices, decimals = decimalChoices, display = displayChoices }
+
+local function addOption(category, option)
+    if db[option.key] == nil then db[option.key] = option.default end
+    local setting = Settings.RegisterAddOnSetting(category, "CastCount_" .. option.key, option.key, db,
+        option.varType, option.name, option.default)
+    setting:SetValueChangedCallback(onChange[option.key] or restyleAll)
+    if option.control == "slider" then
+        local range = Settings.CreateSliderOptions(option.min, option.max, 1)
+        range:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
+        return Settings.CreateSlider(category, setting, range, option.tooltip)
+    elseif option.control == "dropdown" then
+        return Settings.CreateDropdown(category, setting, choicesOf[option.key], option.tooltip)
+    elseif option.control == "color" then
+        return Settings.CreateColorSwatch(category, setting, option.tooltip)
+    end
+    return Settings.CreateCheckbox(category, setting, option.tooltip)
+end
 
 local function registerOptions()
     CastCountDB = CastCountDB or {}
     db = CastCountDB
+    -- Color and offsets used to be shared by both displays; carry them over to the pip bar once.
+    if db.pipColor == nil and db.color ~= nil then db.pipColor, db.pipX, db.pipY = db.color, db.x, db.y end
     setDecimals(db.decimals)
-    local category = Settings.RegisterVerticalLayoutCategory("Cast Count")
+    local category, layout = Settings.RegisterVerticalLayoutCategory("Cast Count")
+    local displayInitializer
     for _, option in ipairs(OPTIONS) do
-        if db[option.key] == nil then db[option.key] = option.default end
-        local setting = Settings.RegisterAddOnSetting(category, "CastCount_" .. option.key, option.key, db,
-            option.varType, option.name, option.default)
-        setting:SetValueChangedCallback(onChange[option.key] or restyleAll)
-        if option.control == "slider" then
-            local range = Settings.CreateSliderOptions(option.min, option.max, 1)
-            range:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
-            Settings.CreateSlider(category, setting, range, option.tooltip)
-        elseif option.control == "dropdown" then
-            Settings.CreateDropdown(category, setting, choicesOf[option.key], option.tooltip)
-        elseif option.control == "color" then
-            Settings.CreateColorSwatch(category, setting, option.tooltip)
+        if option.header then
+            if layout and CreateSettingsListSectionHeaderInitializer then
+                layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(option.header))
+            end
         else
-            Settings.CreateCheckbox(category, setting, option.tooltip)
+            local initializer = addOption(category, option)
+            if option.key == "display" then displayInitializer = initializer end
+            -- Greys out the options of the display that is not chosen.
+            if option.shows and displayInitializer and initializer and initializer.SetParentInitializer then
+                initializer:SetParentInitializer(displayInitializer, function() return db.display == option.shows end)
+            end
         end
     end
     Settings.RegisterAddOnCategory(category)
 end
+
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")

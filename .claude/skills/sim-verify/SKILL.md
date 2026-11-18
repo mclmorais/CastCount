@@ -1,6 +1,6 @@
 ---
 name: sim-verify
-description: Verify Cast Count in wow-ui-sim, by test run and by looking at a rendered action bar. Use after changing CastCount.lua, tests, or anything that affects the numbers drawn on action buttons, and before saying a change works.
+description: Verify Cast Count in wow-ui-sim, by test run and by looking at a rendered action bar. Use after changing CastCount.lua, tests, or anything that affects the pips or numbers drawn on action buttons, and before saying a change works.
 ---
 
 # Verify Cast Count in the simulator
@@ -21,9 +21,9 @@ Exit 0 means every test passed and `CastCount.lua` raised no Lua error. On failu
 .\scripts\sim.ps1 screenshot -Crop bar -Output .sim\bar.png
 ```
 
-Then open `.sim\bar.png` with the Read tool and check it with your own eyes. The scene comes from `scripts/sim-demo.lua`: a mage at 1000 / 5000 mana, Fireball (cost 50) in slots 1 and 3, Frostbolt (cost 100) in slot 2.
+Then open `.sim\bar.png` with the Read tool and check it with your own eyes. The scene comes from `scripts/sim-demo.lua`: a mage at 400 / 5000 mana, Auto Attack (no cost) in slot 1, Fireball (cost 50) in slot 2, Frostbolt (cost 100) in slot 3. The default display is the pip bar with 6 pips. The image is 600x70, so crop the first few buttons and upscale them 4x (PIL, nearest neighbour) before reading it, or the pips are too small to count.
 
-Expected: the numbers **20**, **10**, **20** in the top-left corner of the first three buttons, white and readable over the icon, not clipped, and not overlapping the keybind number in the top-right corner. Other buttons hold whatever the simulator's default character has and may show their own counts.
+Expected: slot 1 has no pips. Slot 2 has a column of 6 white pips at its left edge, all lit, and a small white **+** beside the bottom pip (8 casts). Slot 3 has the top 4 pips lit and the bottom 2 dark (4 casts). The column must not cover the keybind number in the top-right corner. With the number display, slots 2 and 3 show **8** and **4**. Other buttons hold whatever the simulator's default character has and may show their own pips. The gryphon art covers the left edge of slot 1, which is why slot 1 holds the spell with no cost.
 
 Use `.\scripts\sim.ps1 screenshot` with no `-Crop` for the full 1600x1200 UI (`.sim\screenshot.png`), when you need the bars around the main one.
 
@@ -31,7 +31,7 @@ To check another case, change `scripts/sim-demo.lua` (power, spells, slots) and 
 
 ## 3. Report
 
-Say which of the two steps ran and what you saw: the test summary line, and the numbers you read off the image. If a step could not run, say so. Do not report the change as working from the tests alone when it changes what is drawn.
+Say which of the two steps ran and what you saw: the test summary line, and the pips or numbers you read off the image. If a step could not run, say so. Do not report the change as working from the tests alone when it changes what is drawn.
 
 ## Limits
 

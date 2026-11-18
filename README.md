@@ -1,12 +1,12 @@
 # Cast Count
 
-A World of Warcraft: Forever addon that shows, in the top-left corner of each action button, how many times you can cast that spell with your current power.
+A World of Warcraft: Forever addon that shows, in the top-left corner of each action button, how many times you can cast that spell with your current power: as a column of pips, one per cast, or as a number.
 
 It is built to be light on CPU:
 
 - Action slots and spell costs are read only when the bars change, and a burst of changes is merged into one pass 0.2 seconds later.
-- A power change reads no slots and no costs. It evaluates one curve per distinct spell cost and updates the labels.
-- Forever hides the player's power from addons, so the count is computed by the client through `UnitPowerPercent` and a curve from power fraction to casts. The hidden result goes straight to the label.
+- A power change reads no slots and no costs. It evaluates one curve per distinct spell cost (the number) or per pip of each distinct cost (the pip bar), and touches only what changed.
+- Forever hides the player's power from addons, so the count is computed by the client through `UnitPowerPercent` and a curve from power fraction to casts. The hidden result goes straight to the label, or to each pip's alpha through a step curve that is 0 below that pip's cost and 1 from it on.
 
 Supports the Blizzard action bars, Bartender4, Dominos and ElvUI.
 
@@ -18,17 +18,24 @@ Copy this folder into `World of Warcraft\_forever_\Interface\AddOns\CastCount` a
 
 ## Options
 
-Open Esc > Options > AddOns > Cast Count.
+Open Esc > Options > AddOns > Cast Count. The options of the display you did not choose are greyed out.
 
 | Option | What it does |
 | --- | --- |
-| Show cast counts | Turns the numbers on or off. Off hides them and stops all work until you turn it back on. |
+| Show cast counts | Turns the display on or off. Off hides it and stops all work until you turn it back on. |
+| Display | Pip bar or Number. Default Pip bar: a column of pips at the button's left edge, pip 1 at the top, one lit per cast, so the bottom pips go dark first. |
+| **Pip bar** | |
+| Maximum pips | Pips in the pip bar, 1 to 10. Default 6. With more casts than pips, all are lit and a + shows beside the bottom pip. |
+| Color | Color of the lit pips and the +. Default white. |
+| Horizontal offset | Pixels from the button's left edge to the pip bar, 0 to 40. Default 2. |
+| Vertical offset | Pixels down from the button's top edge to the pip bar, 0 to 40. Default 2. The pip bar leaves the same gap at the bottom. |
+| **Number** | |
 | Decimal places | 0, 1 or 2 decimals (3, 3.7, 3.75), still rounded down. Default 0. |
 | Font | Font of the number. Default Arial Narrow. Lists every font registered with LibSharedMedia when an addon that embeds it is loaded (Bartender4, Questie, ...), else the four built-in fonts. A saved font whose file is gone falls back to Arial Narrow. |
-| Color | Color of the number. Default white. |
 | Font size | Height of the number, 6 to 24. Default 12. |
-| Horizontal offset | Pixels from the button's left edge, 0 to 40. Default 2. |
-| Vertical offset | Pixels down from the button's top edge, 0 to 40. Default 2. |
+| Color | Color of the number. Default white. |
+| Horizontal offset | Pixels from the button's left edge to the number, 0 to 40. Default 2. |
+| Vertical offset | Pixels down from the button's top edge to the number, 0 to 40. Default 2. |
 
 Settings are saved per account in `CastCountDB`.
 
@@ -65,11 +72,11 @@ Then, from this folder:
 | Command | What it does |
 | --- | --- |
 | `.\scripts\sim.ps1 test` | Runs `tests/*.lua` headless. Fails on a failed test or on any Lua error raised in `CastCount.lua`, which the simulator's test runner alone does not count as a failure. |
-| `.\scripts\sim.ps1 gui` | Opens the simulator window with Cast Count loaded and [scripts/sim-demo.lua](scripts/sim-demo.lua) applied: a mage at 1000 mana, Fireball in slots 1 and 3 (shows 20), Frostbolt in slot 2 (shows 10). |
+| `.\scripts\sim.ps1 gui` | Opens the simulator window with Cast Count loaded and [scripts/sim-demo.lua](scripts/sim-demo.lua) applied: a mage at 400 / 5000 mana, Auto Attack in slot 1 (no cost, no pips), Fireball in slot 2 (8 casts: all 6 pips and a +), Frostbolt in slot 3 (4 casts: the top 4 pips). |
 | `.\scripts\sim.ps1 screenshot` | Renders that scene headless to `.sim/screenshot.png` (`-Output` to change it, `-Crop bar` for just the main action bar). |
 
 `-Class Warrior` picks another class; `-Sim` overrides `WOW_SIM`. The script links this folder into a temp addons root as `CastCount`, so the checkout can have any name.
 
-Claude Code sessions in this repo have a `sim-verify` skill ([.claude/skills/sim-verify](.claude/skills/sim-verify/SKILL.md)). It runs the tests, renders the action bar, and has Claude read the numbers off the image.
+Claude Code sessions in this repo have a `sim-verify` skill ([.claude/skills/sim-verify](.claude/skills/sim-verify/SKILL.md)). It runs the tests, renders the action bar, and has Claude read the pips off the image.
 
 The simulator does not hide the player's power, so these checks cover the readable-power path only.
