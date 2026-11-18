@@ -4,7 +4,7 @@
     "workspace.library": [".tools/wow-api/Annotations/Core"],
     "workspace.ignoreDir": [".tools", ".sim", "tests", "scripts"],
     "workspace.checkThirdParty": false,
-    "diagnostics.globals": ["SLASH_CASTCOUNT1", "SlashCmdList"],
+    "diagnostics.globals": ["SLASH_CASTCOUNT1", "SlashCmdList", "Settings", "CastCountDB"],
     "diagnostics.neededFileStatus": {
         "missing-parameter": "Any",
         "redundant-parameter": "Any",

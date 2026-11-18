@@ -13,7 +13,7 @@ local function topLeftNumber(frame)
         if region:GetObjectType() == "FontString" then
             local point = region:GetPoint(1)
             local text = region:GetText()
-            if point == "TOPLEFT" and text and text:match("^%d*$") then return text end
+            if point == "TOPLEFT" and text and text:match("^[%d.]*$") then return text end
         end
     end
 end
@@ -34,6 +34,10 @@ end
 local function placeSpell(slot, spellId)
     A_Admin.SetActionSlot(slot, spellId)
     A_Admin.FireEvent("ACTIONBAR_SLOT_CHANGED", slot)
+end
+
+local function setDecimals(decimals)
+    Settings.GetSetting("CastCount_Decimals"):SetValue(decimals)
 end
 
 local function casts(mana, spellId)
@@ -92,4 +96,33 @@ test("counts stay right through combat", function()
     A_Admin.SetInCombat(false)
     A_Admin.AdvanceTime(SETTLE)
     assertEquals(casts(1000, FIREBALL), labelText(ActionButton1))
+end)
+
+test("counts round down, so a cast just out of reach shows 0", function()
+    placeSpell(1, FIREBALL)
+    A_Admin.AdvanceTime(SETTLE)
+    local cost = costOf(FIREBALL)
+    setPower(cost - 1)
+    assertEquals("0", labelText(ActionButton1))
+    setPower(cost * 2 - 1)
+    assertEquals("1", labelText(ActionButton1))
+    setPower(cost * 2)
+    assertEquals("2", labelText(ActionButton1))
+end)
+
+test("decimal places option shows fractions, still rounded down", function()
+    placeSpell(1, FIREBALL)
+    A_Admin.AdvanceTime(SETTLE)
+    local cost = costOf(FIREBALL)
+    setPower(cost * 2 - 1)
+    setDecimals(1)
+    assertEquals("1.9", labelText(ActionButton1))
+    setDecimals(2)
+    assertEquals(string.format("%.2f", math.floor((cost * 2 - 1) * 100 / cost) / 100), labelText(ActionButton1))
+    setPower(cost * 2)
+    assertEquals("2.00", labelText(ActionButton1))
+    setPower(0)
+    assertEquals("0.00", labelText(ActionButton1))
+    setDecimals(0)
+    assertEquals("0", labelText(ActionButton1))
 end)

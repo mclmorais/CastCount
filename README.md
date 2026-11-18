@@ -10,6 +10,8 @@ It is built to be light on CPU:
 
 Supports the Blizzard action bars, Bartender4, Dominos and ElvUI.
 
+Counts are always rounded down, so 0.9 casts of power left shows 0, not 1. Under Options, AddOns, Cast Count, **Decimal places** shows 0, 1 or 2 decimals (3, 3.7, 3.75), still rounded down.
+
 ## Install
 
 Copy this folder into `World of Warcraft\_forever_\Interface\AddOns\CastCount` and `/reload`. Turn off MissingPower, which draws its count in the same corner.
