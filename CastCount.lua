@@ -10,13 +10,39 @@ local GetMacroSpell = GetMacroSpell
 local issecret = issecretvalue or function() return false end
 
 local REBUILD_DELAY = 0.2
-local DECIMALS_SETTING = "CastCount_Decimals"
 local MAX_DECIMALS = 2
 local TYPE_OF_TOKEN = { MANA = 0, RAGE = 1, FOCUS = 2, ENERGY = 3, RUNIC_POWER = 6 }
 local BARS = {
     "Action", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarRight",
     "MultiBarLeft", "MultiBar5", "MultiBar6", "MultiBar7",
 }
+
+local DEFAULT_FONT = "Fonts\\ARIALN.TTF"
+local BUILTIN_FONTS = {
+    { name = "Arial Narrow", path = DEFAULT_FONT },
+    { name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
+    { name = "Morpheus", path = "Fonts\\MORPHEUS.TTF" },
+    { name = "Skurri", path = "Fonts\\SKURRI.TTF" },
+}
+
+local OPTIONS = {
+    { key = "enabled", varType = Settings.VarType.Boolean, name = "Show cast counts", default = true,
+      tooltip = "Show how many casts each action button can afford." },
+    { key = "decimals", varType = Settings.VarType.Number, name = "Decimal places", default = 0, control = "dropdown",
+      tooltip = "How many decimal places each count shows. Counts are always rounded down, so 0.9 casts shows as 0." },
+    { key = "font", varType = Settings.VarType.String, name = "Font", default = DEFAULT_FONT, control = "dropdown",
+      tooltip = "Font of the number. Lists fonts registered with LibSharedMedia when another addon loads it." },
+    { key = "color", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
+      tooltip = "Color of the number." },
+    { key = "size", varType = Settings.VarType.Number, name = "Font size", default = 12, control = "slider", min = 6, max = 24,
+      tooltip = "Height of the number in pixels." },
+    { key = "x", varType = Settings.VarType.Number, name = "Horizontal offset", default = 2, control = "slider", min = 0, max = 40,
+      tooltip = "Distance from the left edge of the button." },
+    { key = "y", varType = Settings.VarType.Number, name = "Vertical offset", default = 2, control = "slider", min = 0, max = 40,
+      tooltip = "Distance from the top edge of the button." },
+}
+
+local db = {}
 
 local function readable(v)
     return v ~= nil and not issecret(v)
@@ -48,6 +74,7 @@ local costOf = {}  -- button -> { powerType, amount }; nil when the button costs
 local byType = {}  -- powerType -> { [button] = amount }
 local labels = {}  -- button -> FontString
 local shown = {}   -- button -> count on its label now
+local fontFlags
 
 local function validSlot(v)
     v = readNumber(tonumber(v))
@@ -99,6 +126,14 @@ local function readCost(spellId)
     end
 end
 
+local function style(label)
+    local r, g, b = CreateColorFromHexString(db.color):GetRGB()
+    if not label:SetFont(db.font, db.size, fontFlags) then label:SetFont(DEFAULT_FONT, db.size, fontFlags) end
+    label:SetTextColor(r, g, b)
+    label:ClearAllPoints()
+    label:SetPoint("TOPLEFT", db.x, -db.y)
+end
+
 local function labelOf(button)
     local label = labels[button]
     if not label then
@@ -106,7 +141,8 @@ local function labelOf(button)
         holder:SetAllPoints(button)
         holder:SetFrameLevel(button:GetFrameLevel() + 10)
         label = holder:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-        label:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
+        if not fontFlags then fontFlags = select(3, label:GetFont()) end
+        style(label)
         labels[button] = label
     end
     return label
@@ -151,6 +187,7 @@ local function showHidden(button, value)
 end
 
 local function refresh(powerType)
+    if not db.enabled then return end
     local byCost = byType[powerType]
     if not byCost then return end
     local power = readNumber(UnitPower("player", powerType))
@@ -172,6 +209,7 @@ local function refresh(powerType)
 end
 
 local function rebuild()
+    if not db.enabled then return end
     wipe(byType)
     for _, name in pairs(buttonNames) do
         local button = _G[name]
@@ -207,43 +245,88 @@ local function scheduleRebuild()
     end)
 end
 
+local function restyleAll()
+    for _, label in pairs(labels) do style(label) end
+end
+
+local function setEnabled(on)
+    for _, label in pairs(labels) do label:GetParent():SetShown(on) end
+    if on then rebuild() end
+end
+
 local function applyDecimals(v)
     setDecimals(v)
     wipe(curves)
     for powerType in pairs(byType) do refresh(powerType) end
 end
 
+local function decimalChoices()
+    local choices = Settings.CreateControlTextContainer()
+    choices:Add(0, "None (3)")
+    choices:Add(1, "One (3.7)")
+    choices:Add(2, "Two (3.75)")
+    return choices:GetData()
+end
+
+local function fontChoices()
+    local choices = Settings.CreateControlTextContainer()
+    local media = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if media then
+        for _, name in ipairs(media:List("font")) do choices:Add(media:Fetch("font", name), name) end
+    else
+        for _, font in ipairs(BUILTIN_FONTS) do choices:Add(font.path, font.name) end
+    end
+    return choices:GetData()
+end
+
+local onChange = {
+    enabled = function(_, on) setEnabled(on) end,
+    decimals = function(_, v) applyDecimals(v) end,
+}
+local choicesOf = { font = fontChoices, decimals = decimalChoices }
+
 local function registerOptions()
-    if type(CastCountDB) ~= "table" then CastCountDB = {} end
+    CastCountDB = CastCountDB or {}
+    db = CastCountDB
+    setDecimals(db.decimals)
     local category = Settings.RegisterVerticalLayoutCategory("Cast Count")
-    local setting = Settings.RegisterAddOnSetting(category, DECIMALS_SETTING, "decimals", CastCountDB,
-        Settings.VarType.Number, "Decimal places", 0)
-    Settings.CreateDropdown(category, setting, function()
-        local options = Settings.CreateControlTextContainer()
-        options:Add(0, "None (3)")
-        options:Add(1, "One (3.7)")
-        options:Add(2, "Two (3.75)")
-        return options:GetData()
-    end, "How many decimal places each count shows. Counts are always rounded down, so 0.9 casts shows as 0.")
+    for _, option in ipairs(OPTIONS) do
+        if db[option.key] == nil then db[option.key] = option.default end
+        local setting = Settings.RegisterAddOnSetting(category, "CastCount_" .. option.key, option.key, db,
+            option.varType, option.name, option.default)
+        setting:SetValueChangedCallback(onChange[option.key] or restyleAll)
+        if option.control == "slider" then
+            local range = Settings.CreateSliderOptions(option.min, option.max, 1)
+            range:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
+            Settings.CreateSlider(category, setting, range, option.tooltip)
+        elseif option.control == "dropdown" then
+            Settings.CreateDropdown(category, setting, choicesOf[option.key], option.tooltip)
+        elseif option.control == "color" then
+            Settings.CreateColorSwatch(category, setting, option.tooltip)
+        else
+            Settings.CreateCheckbox(category, setting, option.tooltip)
+        end
+    end
     Settings.RegisterAddOnCategory(category)
-    Settings.SetOnValueChangedCallback(DECIMALS_SETTING, function() applyDecimals(setting:GetValue()) end)
-    applyDecimals(setting:GetValue())
 end
 
 local frame = CreateFrame("Frame")
-frame:SetScript("OnEvent", function(_, event, arg1, arg2)
-    if event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" then
-        local powerType = TYPE_OF_TOKEN[arg2]
+frame:RegisterEvent("ADDON_LOADED")
+frame:SetScript("OnEvent", function(_, event, arg1, token)
+    if event == "ADDON_LOADED" then
+        if arg1 == "CastCount" then
+            frame:UnregisterEvent("ADDON_LOADED")
+            registerOptions()
+        end
+    elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" then
+        local powerType = TYPE_OF_TOKEN[token]
         if powerType then refresh(powerType) end
-    elseif event == "ADDON_LOADED" then
-        if arg1 == "CastCount" then registerOptions() end
     else
         scheduleRebuild()
     end
 end)
 frame:RegisterUnitEvent("UNIT_POWER_UPDATE", "player")
 frame:RegisterUnitEvent("UNIT_MAXPOWER", "player")
-frame:RegisterEvent("ADDON_LOADED")
 for _, event in pairs({
     "PLAYER_ENTERING_WORLD", "ACTIONBAR_SLOT_CHANGED", "ACTIONBAR_PAGE_CHANGED",
     "UPDATE_BONUS_ACTIONBAR", "UPDATE_SHAPESHIFT_FORM", "SPELLS_CHANGED",
