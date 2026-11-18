@@ -18,19 +18,24 @@ Copy this folder into `World of Warcraft\_forever_\Interface\AddOns\CastCount` a
 
 ## Options
 
-Open Esc > Options > AddOns > Cast Count.
+Open Esc > Options > AddOns > Cast Count. The options of the display you did not choose are greyed out.
 
 | Option | What it does |
 | --- | --- |
 | Show cast counts | Turns the display on or off. Off hides it and stops all work until you turn it back on. |
 | Display | Pip bar or Number. Default Pip bar: a column of pips at the button's left edge, pip 1 at the top, one lit per cast, so the bottom pips go dark first. |
+| **Pip bar** | |
 | Maximum pips | Pips in the pip bar, 1 to 10. Default 6. With more casts than pips, all are lit and a + shows beside the bottom pip. |
-| Decimal places | Number only. 0, 1 or 2 decimals (3, 3.7, 3.75), still rounded down. Default 0. |
-| Font | Font of the number and of the pip bar's +. Default Arial Narrow. Lists every font registered with LibSharedMedia when an addon that embeds it is loaded (Bartender4, Questie, ...), else the four built-in fonts. A saved font whose file is gone falls back to Arial Narrow. |
-| Color | Color of the number, or of the pip bar's lit pips and +. Default white. |
+| Color | Color of the lit pips and the +. Default white. |
+| Horizontal offset | Pixels from the button's left edge to the pip bar, 0 to 40. Default 2. |
+| Vertical offset | Pixels down from the button's top edge to the pip bar, 0 to 40. Default 2. The pip bar leaves the same gap at the bottom. |
+| **Number** | |
+| Decimal places | 0, 1 or 2 decimals (3, 3.7, 3.75), still rounded down. Default 0. |
+| Font | Font of the number. Default Arial Narrow. Lists every font registered with LibSharedMedia when an addon that embeds it is loaded (Bartender4, Questie, ...), else the four built-in fonts. A saved font whose file is gone falls back to Arial Narrow. |
 | Font size | Height of the number, 6 to 24. Default 12. |
-| Horizontal offset | Pixels from the button's left edge to the number or pip bar, 0 to 40. Default 2. |
-| Vertical offset | Pixels down from the button's top edge to the number or pip bar, 0 to 40. Default 2. The pip bar leaves the same gap at the bottom. |
+| Color | Color of the number. Default white. |
+| Horizontal offset | Pixels from the button's left edge to the number, 0 to 40. Default 2. |
+| Vertical offset | Pixels down from the button's top edge to the number, 0 to 40. Default 2. |
 
 Settings are saved per account in `CastCountDB`.
 

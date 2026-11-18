@@ -30,20 +30,28 @@ local OPTIONS = {
       tooltip = "Show how many casts each action button can afford." },
     { key = "display", varType = Settings.VarType.String, name = "Display", default = "pips", control = "dropdown",
       tooltip = "Pip bar: a column of pips, one per cast. Number: the count as text." },
+    { header = "Pip bar" },
     { key = "pips", varType = Settings.VarType.Number, name = "Maximum pips", default = 6, control = "slider", min = 1, max = 10,
-      tooltip = "Pips in the pip bar. With more casts than pips, all are lit and a + shows below them." },
+      shows = "pips", tooltip = "Pips in the pip bar. With more casts than pips, all are lit and a + shows beside the last one." },
+    { key = "pipColor", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
+      shows = "pips", tooltip = "Color of the lit pips and the +." },
+    { key = "pipX", varType = Settings.VarType.Number, name = "Horizontal offset", default = 2, control = "slider", min = 0, max = 40,
+      shows = "pips", tooltip = "Distance of the pip bar from the left edge of the button." },
+    { key = "pipY", varType = Settings.VarType.Number, name = "Vertical offset", default = 2, control = "slider", min = 0, max = 40,
+      shows = "pips", tooltip = "Distance of the pip bar from the top edge of the button. It keeps the same gap at the bottom." },
+    { header = "Number" },
     { key = "decimals", varType = Settings.VarType.Number, name = "Decimal places", default = 0, control = "dropdown",
-      tooltip = "How many decimal places the number shows. Counts are always rounded down, so 0.9 casts shows as 0." },
+      shows = "number", tooltip = "How many decimal places the number shows. Counts are always rounded down, so 0.9 casts shows as 0." },
     { key = "font", varType = Settings.VarType.String, name = "Font", default = DEFAULT_FONT, control = "dropdown",
-      tooltip = "Font of the number and of the pip bar's +. Lists fonts registered with LibSharedMedia when another addon loads it." },
-    { key = "color", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
-      tooltip = "Color of the number, or of the lit pips and the + of the pip bar." },
+      shows = "number", tooltip = "Font of the number. Lists fonts registered with LibSharedMedia when another addon loads it." },
     { key = "size", varType = Settings.VarType.Number, name = "Font size", default = 12, control = "slider", min = 6, max = 24,
-      tooltip = "Height of the number in pixels." },
+      shows = "number", tooltip = "Height of the number in pixels." },
+    { key = "color", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
+      shows = "number", tooltip = "Color of the number." },
     { key = "x", varType = Settings.VarType.Number, name = "Horizontal offset", default = 2, control = "slider", min = 0, max = 40,
-      tooltip = "Distance of the number or pip bar from the left edge of the button." },
+      shows = "number", tooltip = "Distance of the number from the left edge of the button." },
     { key = "y", varType = Settings.VarType.Number, name = "Vertical offset", default = 2, control = "slider", min = 0, max = 40,
-      tooltip = "Distance of the number or pip bar from the top edge of the button. The pip bar keeps the same gap at the bottom." },
+      shows = "number", tooltip = "Distance of the number from the top edge of the button." },
 }
 
 local db = {}
@@ -196,9 +204,9 @@ local function layoutColumn(column)
     local count = db.pips
     local width = max(3, floor(size * PIP_WIDTH / BASE_SIZE + 0.5))
     local gap = max(1, floor(size * PIP_GAP / BASE_SIZE + 0.5))
-    local height = max(1, floor((size - 2 * db.y - gap * (count - 1)) / count))
+    local height = max(1, floor((size - 2 * db.pipY - gap * (count - 1)) / count))
     column:ClearAllPoints()
-    column:SetPoint("TOPLEFT", db.x, -db.y)
+    column:SetPoint("TOPLEFT", db.pipX, -db.pipY)
     column:SetSize(width, count * height + (count - 1) * gap)
     for k = 1, max(count, #column.pips) do
         local pip = column.pips[k]
@@ -214,8 +222,8 @@ local function layoutColumn(column)
         end
     end
     local plus = column.plus
-    if not plus:SetFont(db.font, PLUS_SIZE, fontFlags) then plus:SetFont(DEFAULT_FONT, PLUS_SIZE, fontFlags) end
-    local r, g, b = CreateColorFromHexString(db.color):GetRGB()
+    plus:SetFont(DEFAULT_FONT, PLUS_SIZE, fontFlags)
+    local r, g, b = CreateColorFromHexString(db.pipColor):GetRGB()
     plus:SetTextColor(r, g, b)
     for _, pip in ipairs(column.pips) do pip.fill:SetVertexColor(r, g, b) end
 end
@@ -464,30 +472,48 @@ local onChange = {
 }
 local choicesOf = { font = fontChoices, decimals = decimalChoices, display = displayChoices }
 
+local function addOption(category, option)
+    if db[option.key] == nil then db[option.key] = option.default end
+    local setting = Settings.RegisterAddOnSetting(category, "CastCount_" .. option.key, option.key, db,
+        option.varType, option.name, option.default)
+    setting:SetValueChangedCallback(onChange[option.key] or restyleAll)
+    if option.control == "slider" then
+        local range = Settings.CreateSliderOptions(option.min, option.max, 1)
+        range:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
+        return Settings.CreateSlider(category, setting, range, option.tooltip)
+    elseif option.control == "dropdown" then
+        return Settings.CreateDropdown(category, setting, choicesOf[option.key], option.tooltip)
+    elseif option.control == "color" then
+        return Settings.CreateColorSwatch(category, setting, option.tooltip)
+    end
+    return Settings.CreateCheckbox(category, setting, option.tooltip)
+end
+
 local function registerOptions()
     CastCountDB = CastCountDB or {}
     db = CastCountDB
+    -- Color and offsets used to be shared by both displays; carry them over to the pip bar once.
+    if db.pipColor == nil and db.color ~= nil then db.pipColor, db.pipX, db.pipY = db.color, db.x, db.y end
     setDecimals(db.decimals)
-    local category = Settings.RegisterVerticalLayoutCategory("Cast Count")
+    local category, layout = Settings.RegisterVerticalLayoutCategory("Cast Count")
+    local displayInitializer
     for _, option in ipairs(OPTIONS) do
-        if db[option.key] == nil then db[option.key] = option.default end
-        local setting = Settings.RegisterAddOnSetting(category, "CastCount_" .. option.key, option.key, db,
-            option.varType, option.name, option.default)
-        setting:SetValueChangedCallback(onChange[option.key] or restyleAll)
-        if option.control == "slider" then
-            local range = Settings.CreateSliderOptions(option.min, option.max, 1)
-            range:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
-            Settings.CreateSlider(category, setting, range, option.tooltip)
-        elseif option.control == "dropdown" then
-            Settings.CreateDropdown(category, setting, choicesOf[option.key], option.tooltip)
-        elseif option.control == "color" then
-            Settings.CreateColorSwatch(category, setting, option.tooltip)
+        if option.header then
+            if layout and CreateSettingsListSectionHeaderInitializer then
+                layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(option.header))
+            end
         else
-            Settings.CreateCheckbox(category, setting, option.tooltip)
+            local initializer = addOption(category, option)
+            if option.key == "display" then displayInitializer = initializer end
+            -- Greys out the options of the display that is not chosen.
+            if option.shows and displayInitializer and initializer and initializer.SetParentInitializer then
+                initializer:SetParentInitializer(displayInitializer, function() return db.display == option.shows end)
+            end
         end
     end
     Settings.RegisterAddOnCategory(category)
 end
+
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("ADDON_LOADED")
