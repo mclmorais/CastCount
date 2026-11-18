@@ -18,6 +18,12 @@ Copy this folder into `World of Warcraft\_forever_\Interface\AddOns\CastCount` a
 
 `/castcount` prints how many buttons were found, how many have a cost, whether power is hidden, and what the client returns for the first three filled buttons.
 
+## Type check
+
+`.\scripts\check.ps1` checks `CastCount.lua` with [lua-language-server](https://github.com/LuaLS/lua-language-server) against [Ketho's WoW API annotations](https://github.com/Ketho/vscode-wow-api). The first run downloads both, at the versions pinned in the script, into `.tools/` (gitignored). It fails on unknown globals and on calls with missing, extra or wrongly typed arguments. It does not catch a misspelled method on a frame, because the annotations type `CreateFrame`'s result as a plain table too. The annotations follow the retail API, which Forever shares for the most part.
+
+Editors that use lua-language-server pick up the same settings from `.luarc.json` once the script has run.
+
 ## Verify in the simulator
 
 Cast Count is checked in [wow-ui-sim](https://github.com/Osso/wow-ui-sim). Download its Forever build (`wow-ui-sim-<version>-forever-windows-x86_64.zip` from the releases page), unzip it, and point `WOW_SIM` at `wow-sim.exe` in a `.env` file at the repo root (gitignored):

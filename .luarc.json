@@ -1,0 +1,13 @@
+{
+    "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+    "runtime.version": "Lua 5.1",
+    "workspace.library": [".tools/wow-api/Annotations/Core"],
+    "workspace.ignoreDir": [".tools", ".sim", "tests", "scripts"],
+    "workspace.checkThirdParty": false,
+    "diagnostics.globals": ["SLASH_CASTCOUNT1", "SlashCmdList"],
+    "diagnostics.neededFileStatus": {
+        "missing-parameter": "Any",
+        "redundant-parameter": "Any",
+        "param-type-mismatch": "Any"
+    }
+}
