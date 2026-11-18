@@ -3,8 +3,8 @@
 
 local floor, pairs, pcall, type, tostring, wipe = math.floor, pairs, pcall, type, tostring, wipe
 local UnitPower, UnitPowerMax, UnitPowerPercent, GetActionInfo = UnitPower, UnitPowerMax, UnitPowerPercent, GetActionInfo
-local HasAction = (C_ActionBar and C_ActionBar.HasAction) or HasAction
-local GetCost = (C_Spell and C_Spell.GetSpellPowerCost) or GetSpellPowerCost
+local HasAction = C_ActionBar.HasAction
+local GetCost = C_Spell.GetSpellPowerCost
 local GetMacroSpell = GetMacroSpell
 local issecret = issecretvalue or function() return false end
 
