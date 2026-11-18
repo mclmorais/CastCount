@@ -109,7 +109,7 @@ local function style(label)
     label:SetFont(fontPath, db.size, fontFlags)
     label:SetTextColor(r, g, b)
     label:ClearAllPoints()
-    label:SetPoint("TOPLEFT", label:GetParent():GetParent(), "TOPLEFT", db.x, -db.y)
+    label:SetPoint("TOPLEFT", db.x, -db.y)
 end
 
 local function labelOf(button)
