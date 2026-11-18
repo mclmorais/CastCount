@@ -94,7 +94,7 @@ test("counts stay right through combat", function()
     assertEquals(casts(1000, FIREBALL), labelText(ActionButton1))
 end)
 
-local OPTION_DEFAULTS = { enabled = true, color = "ffffffff", size = 12, x = 2, y = 2 }
+local OPTION_DEFAULTS = { enabled = true, font = "Fonts\\ARIALN.TTF", color = "ffffffff", size = 12, x = 2, y = 2 }
 
 local function option(key)
     return Settings.GetSetting("CastCount_" .. key)
@@ -118,7 +118,7 @@ local function withOptions(fn)
     assertEquals("ok", ok and "ok" or tostring(err))
 end
 
-test("options panel registers a Cast Count category with all five settings", function()
+test("options panel registers a Cast Count category with all its settings", function()
     local found
     for _, category in ipairs(SettingsPanel:GetAllCategories()) do
         if category:GetName() == "Cast Count" then found = category end
@@ -185,5 +185,17 @@ test("a label created after a style change uses the saved style", function()
         local _, _, _, x = label:GetPoint(1)
         assertEquals(20, size)
         assertEquals(5, x)
+    end)
+end)
+
+test("font option switches the font of existing labels", function()
+    withOptions(function()
+        placeSpell(1, FIREBALL)
+        A_Admin.AdvanceTime(SETTLE)
+        local label = labelOf(ActionButton1)
+        option("font"):SetValue("Fonts\\FRIZQT__.TTF")
+        local path, size = label:GetFont()
+        assertEquals("fonts\\frizqt__.ttf", path:lower())
+        assertEquals(12, size)
     end)
 end)

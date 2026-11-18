@@ -21,6 +21,7 @@ Open Esc > Options > AddOns > Cast Count.
 | Option | What it does |
 | --- | --- |
 | Show cast counts | Turns the numbers on or off. Off hides them and stops all work until you turn it back on. |
+| Font | Font of the number. Default Arial Narrow. Lists every font registered with LibSharedMedia when an addon that embeds it is loaded (Bartender4, Questie, ...), else the four built-in fonts. A saved font whose file is gone falls back to Arial Narrow. |
 | Color | Color of the number. Default white. |
 | Font size | Height of the number, 6 to 24. Default 12. |
 | Horizontal offset | Pixels from the button's left edge, 0 to 40. Default 2. |

@@ -15,9 +15,19 @@ local BARS = {
     "MultiBarLeft", "MultiBar5", "MultiBar6", "MultiBar7",
 }
 
+local DEFAULT_FONT = "Fonts\\ARIALN.TTF"
+local BUILTIN_FONTS = {
+    { name = "Arial Narrow", path = DEFAULT_FONT },
+    { name = "Friz Quadrata", path = "Fonts\\FRIZQT__.TTF" },
+    { name = "Morpheus", path = "Fonts\\MORPHEUS.TTF" },
+    { name = "Skurri", path = "Fonts\\SKURRI.TTF" },
+}
+
 local OPTIONS = {
     { key = "enabled", varType = Settings.VarType.Boolean, name = "Show cast counts", default = true,
       tooltip = "Show how many casts each action button can afford." },
+    { key = "font", varType = Settings.VarType.String, name = "Font", default = DEFAULT_FONT, control = "dropdown",
+      tooltip = "Font of the number. Lists fonts registered with LibSharedMedia when another addon loads it." },
     { key = "color", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
       tooltip = "Color of the number." },
     { key = "size", varType = Settings.VarType.Number, name = "Font size", default = 12, control = "slider", min = 6, max = 24,
@@ -52,7 +62,7 @@ local costOf = {}  -- button -> { powerType, amount }; nil when the button costs
 local byType = {}  -- powerType -> { [button] = amount }
 local labels = {}  -- button -> FontString
 local shown = {}   -- button -> count on its label now
-local fontPath, fontFlags
+local fontFlags
 
 local function validSlot(v)
     v = readNumber(tonumber(v))
@@ -106,7 +116,7 @@ end
 
 local function style(label)
     local r, g, b = CreateColorFromHexString(db.color):GetRGB()
-    label:SetFont(fontPath, db.size, fontFlags)
+    if not label:SetFont(db.font, db.size, fontFlags) then label:SetFont(DEFAULT_FONT, db.size, fontFlags) end
     label:SetTextColor(r, g, b)
     label:ClearAllPoints()
     label:SetPoint("TOPLEFT", db.x, -db.y)
@@ -119,10 +129,7 @@ local function labelOf(button)
         holder:SetAllPoints(button)
         holder:SetFrameLevel(button:GetFrameLevel() + 10)
         label = holder:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-        if not fontPath then
-            local _
-            fontPath, _, fontFlags = label:GetFont()
-        end
+        if not fontFlags then fontFlags = select(3, label:GetFont()) end
         style(label)
         labels[button] = label
     end
@@ -228,11 +235,22 @@ local function setEnabled(on)
     if on then rebuild() end
 end
 
+local function fontChoices()
+    local choices = Settings.CreateControlTextContainer()
+    local media = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if media then
+        for _, name in ipairs(media:List("font")) do choices:Add(media:Fetch("font", name), name) end
+    else
+        for _, font in ipairs(BUILTIN_FONTS) do choices:Add(font.path, font.name) end
+    end
+    return choices:GetData()
+end
+
 local function registerOptions()
     CastCountDB = CastCountDB or {}
     db = CastCountDB
     local category = Settings.RegisterVerticalLayoutCategory("Cast Count")
-    for _, option in pairs(OPTIONS) do
+    for _, option in ipairs(OPTIONS) do
         if db[option.key] == nil then db[option.key] = option.default end
         local setting = Settings.RegisterAddOnSetting(category, "CastCount_" .. option.key, option.key, db,
             option.varType, option.name, option.default)
@@ -241,6 +259,8 @@ local function registerOptions()
             local range = Settings.CreateSliderOptions(option.min, option.max, 1)
             range:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
             Settings.CreateSlider(category, setting, range, option.tooltip)
+        elseif option.control == "dropdown" then
+            Settings.CreateDropdown(category, setting, fontChoices, option.tooltip)
         elseif option.control == "color" then
             Settings.CreateColorSwatch(category, setting, option.tooltip)
         else
