@@ -1,7 +1,8 @@
 -- Expensive reads (action slots, spell costs) happen only when the bars change, debounced.
 -- A power change only divides the cached costs of that power type and touches text that changed.
 
-local floor, pairs, pcall, type, tostring, wipe = math.floor, pairs, pcall, type, tostring, wipe
+local floor, max, min, format = math.floor, math.max, math.min, string.format
+local pairs, pcall, type, tonumber, tostring, wipe = pairs, pcall, type, tonumber, tostring, wipe
 local UnitPower, UnitPowerMax, UnitPowerPercent, GetActionInfo = UnitPower, UnitPowerMax, UnitPowerPercent, GetActionInfo
 local HasAction = C_ActionBar.HasAction
 local GetCost = C_Spell.GetSpellPowerCost
@@ -9,6 +10,7 @@ local GetMacroSpell = GetMacroSpell
 local issecret = issecretvalue or function() return false end
 
 local REBUILD_DELAY = 0.2
+local MAX_DECIMALS = 2
 local TYPE_OF_TOKEN = { MANA = 0, RAGE = 1, FOCUS = 2, ENERGY = 3, RUNIC_POWER = 6 }
 local BARS = {
     "Action", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarRight",
@@ -26,6 +28,8 @@ local BUILTIN_FONTS = {
 local OPTIONS = {
     { key = "enabled", varType = Settings.VarType.Boolean, name = "Show cast counts", default = true,
       tooltip = "Show how many casts each action button can afford." },
+    { key = "decimals", varType = Settings.VarType.Number, name = "Decimal places", default = 0, control = "dropdown",
+      tooltip = "How many decimal places each count shows. Counts are always rounded down, so 0.9 casts shows as 0." },
     { key = "font", varType = Settings.VarType.String, name = "Font", default = DEFAULT_FONT, control = "dropdown",
       tooltip = "Font of the number. Lists fonts registered with LibSharedMedia when another addon loads it." },
     { key = "color", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
@@ -56,6 +60,14 @@ for i = 1, 180 do buttonNames[#buttonNames + 1] = "BT4Button" .. i end
 for i = 1, 180 do buttonNames[#buttonNames + 1] = "DominosActionButton" .. i end
 for bar = 1, 15 do
     for i = 1, 12 do buttonNames[#buttonNames + 1] = "ElvUI_Bar" .. bar .. "Button" .. i end
+end
+
+-- Counts are always rounded down: 0.9 casts left is a cast you cannot make, so it shows 0, not 1.
+local scale, textFormat = 1, "%.0f"
+
+local function setDecimals(v)
+    local decimals = max(0, min(MAX_DECIMALS, floor(tonumber(v) or 0)))
+    scale, textFormat = 10 ^ decimals, "%." .. decimals .. "f"
 end
 
 local costOf = {}  -- button -> { powerType, amount }; nil when the button costs nothing
@@ -143,19 +155,26 @@ local function show(button, count)
 end
 
 -- Forever hides UnitPower from addons. A curve over the power fraction (0..1 -> 0..max/cost) lets the client
--- compute power/cost itself; the hidden result goes straight to the label, and %d truncates it to whole casts.
-local curves = {} -- "cost:max" -> curve
+-- compute power/cost itself, and the hidden result goes straight to the label through textFormat.
+-- The format rounds, so the curve runs half a display step low to make it round down instead. It stays 1e-6 above
+-- that so an exact count (power = 4 * cost) does not land a hair under 4, and it flattens at 0 so it never prints -0.
+local curves = {} -- "cost:max" -> curve for the current decimals
 local HIDDEN = {}
 
-local function curveFor(amount, max)
-    local key = amount .. ":" .. max
+local function curveFor(amount, powerMax)
+    local key = amount .. ":" .. powerMax
     local curve = curves[key]
     if not curve then
         curve = C_CurveUtil.CreateCurve()
         if curve.SetType and Enum.LuaCurveType then curve:SetType(Enum.LuaCurveType.Linear) end
-        -- The offset keeps an exact count (power = 4 * cost) from rounding to 3.9999 and truncating to 3.
-        curve:AddPoint(0, 1e-6)
-        curve:AddPoint(1, max / amount + 1e-6)
+        local full, shift = powerMax / amount, 0.5 / scale - 1e-6
+        curve:AddPoint(0, 0)
+        if full > shift then
+            curve:AddPoint(shift / full, 0)
+            curve:AddPoint(1, full - shift)
+        else
+            curve:AddPoint(1, 0)
+        end
         curves[key] = curve
     end
     return curve
@@ -164,7 +183,7 @@ end
 local function showHidden(button, value)
     shown[button] = HIDDEN
     local label = labelOf(button)
-    if not pcall(label.SetFormattedText, label, "%d", value) then pcall(label.SetText, label, value) end
+    if not pcall(label.SetFormattedText, label, textFormat, value) then pcall(label.SetText, label, value) end
 end
 
 local function refresh(powerType)
@@ -174,15 +193,15 @@ local function refresh(powerType)
     local power = readNumber(UnitPower("player", powerType))
     if power then
         for amount, buttons in pairs(byCost) do
-            local count = floor(power / amount)
-            for button in pairs(buttons) do show(button, count) end
+            local text = format(textFormat, floor(power * scale / amount) / scale)
+            for button in pairs(buttons) do show(button, text) end
         end
         return
     end
-    local max = readNumber(UnitPowerMax("player", powerType))
-    if not max or max <= 0 or not UnitPowerPercent or not C_CurveUtil then return end
+    local powerMax = readNumber(UnitPowerMax("player", powerType))
+    if not powerMax or powerMax <= 0 or not UnitPowerPercent or not C_CurveUtil then return end
     for amount, buttons in pairs(byCost) do
-        local ok, casts = pcall(UnitPowerPercent, "player", powerType, false, curveFor(amount, max))
+        local ok, casts = pcall(UnitPowerPercent, "player", powerType, false, curveFor(amount, powerMax))
         if ok and casts ~= nil then
             for button in pairs(buttons) do showHidden(button, casts) end
         end
@@ -235,6 +254,20 @@ local function setEnabled(on)
     if on then rebuild() end
 end
 
+local function applyDecimals(v)
+    setDecimals(v)
+    wipe(curves)
+    for powerType in pairs(byType) do refresh(powerType) end
+end
+
+local function decimalChoices()
+    local choices = Settings.CreateControlTextContainer()
+    choices:Add(0, "None (3)")
+    choices:Add(1, "One (3.7)")
+    choices:Add(2, "Two (3.75)")
+    return choices:GetData()
+end
+
 local function fontChoices()
     local choices = Settings.CreateControlTextContainer()
     local media = LibStub and LibStub("LibSharedMedia-3.0", true)
@@ -246,21 +279,28 @@ local function fontChoices()
     return choices:GetData()
 end
 
+local onChange = {
+    enabled = function(_, on) setEnabled(on) end,
+    decimals = function(_, v) applyDecimals(v) end,
+}
+local choicesOf = { font = fontChoices, decimals = decimalChoices }
+
 local function registerOptions()
     CastCountDB = CastCountDB or {}
     db = CastCountDB
+    setDecimals(db.decimals)
     local category = Settings.RegisterVerticalLayoutCategory("Cast Count")
     for _, option in ipairs(OPTIONS) do
         if db[option.key] == nil then db[option.key] = option.default end
         local setting = Settings.RegisterAddOnSetting(category, "CastCount_" .. option.key, option.key, db,
             option.varType, option.name, option.default)
-        setting:SetValueChangedCallback(option.key == "enabled" and function(_, on) setEnabled(on) end or restyleAll)
+        setting:SetValueChangedCallback(onChange[option.key] or restyleAll)
         if option.control == "slider" then
             local range = Settings.CreateSliderOptions(option.min, option.max, 1)
             range:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right)
             Settings.CreateSlider(category, setting, range, option.tooltip)
         elseif option.control == "dropdown" then
-            Settings.CreateDropdown(category, setting, fontChoices, option.tooltip)
+            Settings.CreateDropdown(category, setting, choicesOf[option.key], option.tooltip)
         elseif option.control == "color" then
             Settings.CreateColorSwatch(category, setting, option.tooltip)
         else

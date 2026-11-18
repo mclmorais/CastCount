@@ -13,7 +13,7 @@ local function topLeftNumber(frame)
         if region:GetObjectType() == "FontString" then
             local point = region:GetPoint(1)
             local text = region:GetText()
-            if point == "TOPLEFT" and text and text:match("^%d*$") then return text end
+            if point == "TOPLEFT" and text and text:match("^[%d.]*$") then return text end
         end
     end
 end
@@ -94,7 +94,7 @@ test("counts stay right through combat", function()
     assertEquals(casts(1000, FIREBALL), labelText(ActionButton1))
 end)
 
-local OPTION_DEFAULTS = { enabled = true, font = "Fonts\\ARIALN.TTF", color = "ffffffff", size = 12, x = 2, y = 2 }
+local OPTION_DEFAULTS = { enabled = true, decimals = 0, font = "Fonts\\ARIALN.TTF", color = "ffffffff", size = 12, x = 2, y = 2 }
 
 local function option(key)
     return Settings.GetSetting("CastCount_" .. key)
@@ -197,5 +197,36 @@ test("font option switches the font of existing labels", function()
         local path, size = label:GetFont()
         assertEquals("fonts\\frizqt__.ttf", path:lower())
         assertEquals(12, size)
+    end)
+end)
+
+test("counts round down, so a cast just out of reach shows 0", function()
+    placeSpell(1, FIREBALL)
+    A_Admin.AdvanceTime(SETTLE)
+    local cost = costOf(FIREBALL)
+    setPower(cost - 1)
+    assertEquals("0", labelText(ActionButton1))
+    setPower(cost * 2 - 1)
+    assertEquals("1", labelText(ActionButton1))
+    setPower(cost * 2)
+    assertEquals("2", labelText(ActionButton1))
+end)
+
+test("decimal places option shows fractions, still rounded down", function()
+    withOptions(function()
+        placeSpell(1, FIREBALL)
+        A_Admin.AdvanceTime(SETTLE)
+        local cost = costOf(FIREBALL)
+        setPower(cost * 2 - 1)
+        option("decimals"):SetValue(1)
+        assertEquals("1.9", labelText(ActionButton1))
+        option("decimals"):SetValue(2)
+        assertEquals(string.format("%.2f", math.floor((cost * 2 - 1) * 100 / cost) / 100), labelText(ActionButton1))
+        setPower(cost * 2)
+        assertEquals("2.00", labelText(ActionButton1))
+        setPower(0)
+        assertEquals("0.00", labelText(ActionButton1))
+        option("decimals"):SetValue(0)
+        assertEquals("0", labelText(ActionButton1))
     end)
 end)
