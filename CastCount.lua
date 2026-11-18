@@ -223,7 +223,7 @@ local function columnOf(button)
         column = CreateFrame("Frame", nil, holderOf(button))
         column.pips = {}
         column.plus = column:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-        column.plus:SetPoint("TOPLEFT", column, "BOTTOMLEFT", 0, -1)
+        column.plus:SetPoint("BOTTOMLEFT", column, "BOTTOMRIGHT", 1, -1)
         column.plus:SetText("+")
         column.plus:SetAlpha(0)
         if not fontFlags then fontFlags = select(3, column.plus:GetFont()) end
