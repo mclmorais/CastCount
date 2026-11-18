@@ -93,3 +93,97 @@ test("counts stay right through combat", function()
     A_Admin.AdvanceTime(SETTLE)
     assertEquals(casts(1000, FIREBALL), labelText(ActionButton1))
 end)
+
+local OPTION_DEFAULTS = { enabled = true, color = "ffffffff", size = 12, x = 2, y = 2 }
+
+local function option(key)
+    return Settings.GetSetting("CastCount_" .. key)
+end
+
+local function resetOptions()
+    for key, default in pairs(OPTION_DEFAULTS) do option(key):SetValue(default) end
+    A_Admin.AdvanceTime(SETTLE)
+end
+
+local function labelOf(button)
+    for _, child in ipairs({ button:GetChildren() }) do
+        local regions = { child:GetRegions() }
+        if #regions == 1 and regions[1]:GetObjectType() == "FontString" then return regions[1], child end
+    end
+end
+
+local function withOptions(fn)
+    local ok, err = pcall(fn)
+    resetOptions()
+    assertEquals("ok", ok and "ok" or tostring(err))
+end
+
+test("options panel registers a Cast Count category with all five settings", function()
+    local found
+    for _, category in ipairs(SettingsPanel:GetAllCategories()) do
+        if category:GetName() == "Cast Count" then found = category end
+    end
+    assertTrue(found ~= nil)
+    for key in pairs(OPTION_DEFAULTS) do
+        assertTrue(option(key) ~= nil)
+        assertEquals(OPTION_DEFAULTS[key], option(key):GetValue())
+        assertEquals(OPTION_DEFAULTS[key], CastCountDB[key])
+    end
+end)
+
+test("disabling hides the numbers and re-enabling restores them", function()
+    withOptions(function()
+        setPower(1000)
+        placeSpell(1, FIREBALL)
+        A_Admin.AdvanceTime(SETTLE)
+        local _, holder = labelOf(ActionButton1)
+        assertTrue(holder:IsShown())
+        option("enabled"):SetValue(false)
+        assertTrue(not holder:IsShown())
+        placeSpell(2, FROSTBOLT)
+        A_Admin.AdvanceTime(SETTLE)
+        setPower(500)
+        option("enabled"):SetValue(true)
+        assertTrue(holder:IsShown())
+        assertEquals(casts(500, FIREBALL), labelText(ActionButton1))
+        assertEquals(casts(500, FROSTBOLT), labelText(ActionButton2))
+    end)
+end)
+
+test("size, color and offsets restyle existing labels", function()
+    withOptions(function()
+        placeSpell(1, FIREBALL)
+        A_Admin.AdvanceTime(SETTLE)
+        local label = labelOf(ActionButton1)
+        local _, size = label:GetFont()
+        assertEquals(12, size)
+        option("size"):SetValue(18)
+        local _, newSize = label:GetFont()
+        assertEquals(18, newSize)
+        option("color"):SetValue("ffff0000")
+        local r, g, b = label:GetTextColor()
+        assertEquals(1, r)
+        assertEquals(0, g)
+        assertEquals(0, b)
+        option("x"):SetValue(9)
+        option("y"):SetValue(7)
+        local point, _, _, x, y = label:GetPoint(1)
+        assertEquals("TOPLEFT", point)
+        assertEquals(9, x)
+        assertEquals(-7, y)
+    end)
+end)
+
+test("a label created after a style change uses the saved style", function()
+    withOptions(function()
+        option("size"):SetValue(20)
+        option("x"):SetValue(5)
+        placeSpell(7, FIREBALL)
+        A_Admin.AdvanceTime(SETTLE)
+        local label = labelOf(ActionButton7)
+        local _, size = label:GetFont()
+        local _, _, _, x = label:GetPoint(1)
+        assertEquals(20, size)
+        assertEquals(5, x)
+    end)
+end)
