@@ -7,6 +7,8 @@ Fetches both, at the pinned versions below, into .tools/ on first run. Fails on 
 The annotations follow the retail (Mainline) API, which Forever shares for the most part.
 #>
 $ErrorActionPreference = "Stop"
+# A git hook sets these, and they would point the git calls below at this repo instead of the annotations clone.
+Remove-Item Env:GIT_DIR, Env:GIT_INDEX_FILE, Env:GIT_WORK_TREE, Env:GIT_PREFIX -ErrorAction SilentlyContinue
 $repo = Split-Path -Parent $PSScriptRoot
 $tools = Join-Path $repo ".tools"
 

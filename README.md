@@ -24,6 +24,14 @@ Copy this folder into `World of Warcraft\_forever_\Interface\AddOns\CastCount` a
 
 Editors that use lua-language-server pick up the same settings from `.luarc.json` once the script has run.
 
+To run it before every commit that touches a `.lua` file or `.luarc.json`, turn on the repo's hooks once per clone:
+
+```
+git config core.hooksPath .githooks
+```
+
+The hook checks the files on disk, not only what is staged.
+
 ## Verify in the simulator
 
 Cast Count is checked in [wow-ui-sim](https://github.com/Osso/wow-ui-sim). Download its Forever build (`wow-ui-sim-<version>-forever-windows-x86_64.zip` from the releases page), unzip it, and point `WOW_SIM` at `wow-sim.exe` in a `.env` file at the repo root (gitignored):

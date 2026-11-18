@@ -1,0 +1,3 @@
+#!/bin/sh
+git diff --cached --name-only --diff-filter=ACMR | grep -qE '\.lua$|^\.luarc\.json$' || exit 0
+exec powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
