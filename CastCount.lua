@@ -1,7 +1,7 @@
 -- Expensive reads (action slots, spell costs) happen only when the bars change, debounced.
 -- A power change only divides the cached costs of that power type and touches text that changed.
 
-local floor, max, min, format = math.floor, math.max, math.min, string.format
+local floor, format = math.floor, string.format
 local pairs, pcall, type, tonumber, tostring, wipe = pairs, pcall, type, tonumber, tostring, wipe
 local UnitPower, UnitPowerMax, UnitPowerPercent, GetActionInfo = UnitPower, UnitPowerMax, UnitPowerPercent, GetActionInfo
 local HasAction = C_ActionBar.HasAction
@@ -10,7 +10,6 @@ local GetMacroSpell = GetMacroSpell
 local issecret = issecretvalue or function() return false end
 
 local REBUILD_DELAY = 0.2
-local MAX_DECIMALS = 2
 local TYPE_OF_TOKEN = { MANA = 0, RAGE = 1, FOCUS = 2, ENERGY = 3, RUNIC_POWER = 6 }
 local BARS = {
     "Action", "MultiBarBottomLeft", "MultiBarBottomRight", "MultiBarRight",
@@ -29,7 +28,7 @@ local OPTIONS = {
     { key = "enabled", varType = Settings.VarType.Boolean, name = "Show cast counts", default = true,
       tooltip = "Show how many casts each action button can afford." },
     { key = "decimals", varType = Settings.VarType.Number, name = "Decimal places", default = 0, control = "dropdown",
-      tooltip = "How many decimal places each count shows. Counts are always rounded down, so 0.9 casts shows as 0." },
+      tooltip = "How many decimal places each count shows. Counts are always rounded down, so 0.9 casts shows as 0. \"Only below 1\" shows whole numbers, and a fraction only when you cannot afford one full cast." },
     { key = "font", varType = Settings.VarType.String, name = "Font", default = DEFAULT_FONT, control = "dropdown",
       tooltip = "Font of the number. Lists fonts registered with LibSharedMedia when another addon loads it." },
     { key = "color", varType = Settings.VarType.String, name = "Color", default = "ffffffff", control = "color",
@@ -63,11 +62,27 @@ for bar = 1, 15 do
 end
 
 -- Counts are always rounded down: 0.9 casts left is a cast you cannot make, so it shows 0, not 1.
-local scale, textFormat = 1, "%.0f"
+local DISPLAYS = {
+    [0] = { decimals = 0, label = "None (3)" },
+    [1] = { decimals = 1, label = "One (3.7)" },
+    [2] = { decimals = 2, label = "Two (3.75)" },
+    [3] = { decimals = 1, belowOne = true, label = "Only below 1 (3, .7)" },
+}
+
+local display, scale, textFormat
 
 local function setDecimals(v)
-    local decimals = max(0, min(MAX_DECIMALS, floor(tonumber(v) or 0)))
-    scale, textFormat = 10 ^ decimals, "%." .. decimals .. "f"
+    display = DISPLAYS[v] or DISPLAYS[0]
+    scale = 10 ^ display.decimals
+    textFormat = display.belowOne and "%g" or "%." .. display.decimals .. "f"
+end
+
+local function countText(power, amount)
+    if not display.belowOne then return format(textFormat, floor(power * scale / amount) / scale) end
+    local tenths = floor(power * 10 / amount)
+    if tenths >= 10 then return tostring(floor(tenths / 10)) end
+    if tenths == 0 then return "0" end
+    return "." .. tenths
 end
 
 local costOf = {}  -- button -> { powerType, amount }; nil when the button costs nothing
@@ -158,23 +173,39 @@ end
 -- compute power/cost itself, and the hidden result goes straight to the label through textFormat.
 -- The format rounds, so the curve runs half a display step low to make it round down instead. It stays 1e-6 above
 -- that so an exact count (power = 4 * cost) does not land a hair under 4, and it flattens at 0 so it never prints -0.
+-- Only-below-1 cannot branch on the hidden number, so its curve is a step function that already outputs the
+-- displayed value. A number cannot print without its leading zero, so this path shows 0.9 where the readable path shows .9.
 local curves = {} -- "cost:max" -> curve for the current decimals
 local HIDDEN = {}
+
+local function buildStepCurve(curve, full)
+    curve:SetType(Enum.LuaCurveType.Step)
+    curve:AddPoint(0, 0)
+    for tenth = 1, 9 do
+        if tenth / 10 <= full then curve:AddPoint((tenth / 10 - 1e-6) / full, tenth / 10) end
+    end
+    for whole = 1, floor(full) do curve:AddPoint((whole - 1e-6) / full, whole) end
+end
+
+local function buildLinearCurve(curve, full)
+    if curve.SetType and Enum.LuaCurveType then curve:SetType(Enum.LuaCurveType.Linear) end
+    local shift = 0.5 / scale - 1e-6
+    curve:AddPoint(0, 0)
+    if full > shift then
+        curve:AddPoint(shift / full, 0)
+        curve:AddPoint(1, full - shift)
+    else
+        curve:AddPoint(1, 0)
+    end
+end
 
 local function curveFor(amount, powerMax)
     local key = amount .. ":" .. powerMax
     local curve = curves[key]
     if not curve then
         curve = C_CurveUtil.CreateCurve()
-        if curve.SetType and Enum.LuaCurveType then curve:SetType(Enum.LuaCurveType.Linear) end
-        local full, shift = powerMax / amount, 0.5 / scale - 1e-6
-        curve:AddPoint(0, 0)
-        if full > shift then
-            curve:AddPoint(shift / full, 0)
-            curve:AddPoint(1, full - shift)
-        else
-            curve:AddPoint(1, 0)
-        end
+        local build = display.belowOne and buildStepCurve or buildLinearCurve
+        build(curve, powerMax / amount)
         curves[key] = curve
     end
     return curve
@@ -193,7 +224,7 @@ local function refresh(powerType)
     local power = readNumber(UnitPower("player", powerType))
     if power then
         for amount, buttons in pairs(byCost) do
-            local text = format(textFormat, floor(power * scale / amount) / scale)
+            local text = countText(power, amount)
             for button in pairs(buttons) do show(button, text) end
         end
         return
@@ -262,9 +293,7 @@ end
 
 local function decimalChoices()
     local choices = Settings.CreateControlTextContainer()
-    choices:Add(0, "None (3)")
-    choices:Add(1, "One (3.7)")
-    choices:Add(2, "Two (3.75)")
+    for value = 0, #DISPLAYS do choices:Add(value, DISPLAYS[value].label) end
     return choices:GetData()
 end
 
