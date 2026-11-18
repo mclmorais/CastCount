@@ -69,6 +69,9 @@ local DISPLAYS = {
     [3] = { decimals = 1, belowOne = true, label = "Only below 1 (3, .7)" },
 }
 
+-- At the default offset the leading dot of ".9" sits on the button border and the count reads as 9.
+local BELOW_ONE_NUDGE = 3
+
 local display, scale, textFormat
 
 local function setDecimals(v)
@@ -146,7 +149,7 @@ local function style(label)
     if not label:SetFont(db.font, db.size, fontFlags) then label:SetFont(DEFAULT_FONT, db.size, fontFlags) end
     label:SetTextColor(r, g, b)
     label:ClearAllPoints()
-    label:SetPoint("TOPLEFT", db.x, -db.y)
+    label:SetPoint("TOPLEFT", db.x + (display.belowOne and BELOW_ONE_NUDGE or 0), -db.y)
 end
 
 local function labelOf(button)
@@ -287,6 +290,7 @@ end
 
 local function applyDecimals(v)
     setDecimals(v)
+    restyleAll()
     wipe(curves)
     for powerType in pairs(byType) do refresh(powerType) end
 end

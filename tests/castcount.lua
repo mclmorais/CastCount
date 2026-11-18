@@ -251,3 +251,17 @@ test("decimal places only below 1 shows a tenth under one cast, rounded down", f
         assertEquals("1", labelText(ActionButton1))
     end)
 end)
+
+test("only below 1 nudges the label right so the dot clears the border", function()
+    withOptions(function()
+        placeSpell(1, FIREBALL)
+        A_Admin.AdvanceTime(SETTLE)
+        local label = labelOf(ActionButton1)
+        local function x() return select(4, label:GetPoint(1)) end
+        local base = x()
+        option("decimals"):SetValue(3)
+        assertTrue(x() > base)
+        option("decimals"):SetValue(0)
+        assertEquals(base, x())
+    end)
+end)
