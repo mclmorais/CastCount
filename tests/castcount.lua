@@ -40,7 +40,7 @@ local function casts(mana, spellId)
     return tostring(math.floor(mana / costOf(spellId)))
 end
 
-local OPTION_DEFAULTS = { enabled = true, display = "pips", pips = 6, decimals = 0, font = "Fonts\\ARIALN.TTF", color = "ffffffff", size = 12, x = 2, y = 2 }
+local OPTION_DEFAULTS = { enabled = true, display = "pips", pips = 6, pipStyle = "flat", decimals = 0, font = "Fonts\\ARIALN.TTF", color = "ffffffff", size = 12, x = 2, y = 2 }
 
 local function option(key)
     return Settings.GetSetting("CastCount_" .. key)
@@ -259,7 +259,7 @@ local function pipText(button)
     if not column or not column:IsShown() then return "none" end
     local lit, total, litAfterDark = 0, 0, false
     for _, pip in ipairs({ column:GetChildren() }) do
-        if pip:IsShown() then
+        if pip:IsShown() and select("#", pip:GetRegions()) == 3 then
             total = total + 1
             local fill = select(3, pip:GetRegions())
             if fill:GetAlpha() > 0.5 then

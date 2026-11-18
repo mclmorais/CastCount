@@ -31,7 +31,9 @@ local OPTIONS = {
     { key = "display", varType = Settings.VarType.String, name = "Display", default = "pips", control = "dropdown",
       tooltip = "Pip bar: a column of pips, one per cast. Number: the count as text." },
     { key = "pips", varType = Settings.VarType.Number, name = "Maximum pips", default = 6, control = "slider", min = 1, max = 10,
-      tooltip = "Pips in the pip bar. With more casts than pips, all are lit and a + shows below them." },
+      tooltip = "Pips in the pip bar. With more casts than pips, all are lit and a + shows beside the last one." },
+    { key = "pipStyle", varType = Settings.VarType.String, name = "Pip style", default = "flat", control = "dropdown",
+      tooltip = "Look of the pip bar: flat pips, pips with the status bar sheen, or sheen pips inside a tooltip border or a thin slot-colored edge." },
     { key = "decimals", varType = Settings.VarType.Number, name = "Decimal places", default = 0, control = "dropdown",
       tooltip = "How many decimal places the number shows. Counts are always rounded down, so 0.9 casts shows as 0." },
     { key = "font", varType = Settings.VarType.String, name = "Font", default = DEFAULT_FONT, control = "dropdown",
@@ -171,19 +173,30 @@ end
 -- Sizes are for a 45px button and scale with it.
 local BASE_SIZE, PIP_WIDTH, PIP_GAP, PLUS_SIZE = 45, 7, 2, 10
 local SLOT_SHADE = 0.12
+local STATUSBAR = "Interface\\TargetingFrame\\UI-StatusBar"
+
+-- pad: pixels between the column's edge and its pips, where the border draws.
+local PIP_STYLES = {
+    flat = { pad = 0, outline = true },
+    sheen = { pad = 0, outline = true, fill = STATUSBAR },
+    tooltip = { pad = 3, fill = STATUSBAR, edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 6,
+        r = 1, g = 1, b = 1 },
+    edge = { pad = 2, fill = STATUSBAR, edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1,
+        r = 0.42, g = 0.38, b = 0.32 },
+}
 
 local function newPip(column)
     local pip = CreateFrame("Frame", nil, column)
-    local outline = pip:CreateTexture(nil, "BACKGROUND")
-    outline:SetPoint("TOPLEFT", -1, 1)
-    outline:SetPoint("BOTTOMRIGHT", 1, -1)
-    outline:SetColorTexture(0, 0, 0, 1)
+    pip:SetFrameLevel(column:GetFrameLevel() + 2)
+    pip.outline = pip:CreateTexture(nil, "BACKGROUND")
+    pip.outline:SetPoint("TOPLEFT", -1, 1)
+    pip.outline:SetPoint("BOTTOMRIGHT", 1, -1)
+    pip.outline:SetColorTexture(0, 0, 0, 1)
     local slot = pip:CreateTexture(nil, "BORDER")
     slot:SetAllPoints()
     slot:SetColorTexture(SLOT_SHADE, SLOT_SHADE, SLOT_SHADE, 1)
     pip.fill = pip:CreateTexture(nil, "ARTWORK")
     pip.fill:SetAllPoints()
-    pip.fill:SetColorTexture(1, 1, 1, 1)
     pip.fill:SetAlpha(0)
     return pip
 end
@@ -192,12 +205,14 @@ end
 local function layoutColumn(column)
     local size = column:GetParent():GetHeight()
     if not size or size <= 0 then size = BASE_SIZE end
+    local look = PIP_STYLES[db.pipStyle] or PIP_STYLES.flat
+    local pad = look.pad
     local count = db.pips
     local width = max(3, floor(size * PIP_WIDTH / BASE_SIZE + 0.5))
     local gap = max(1, floor(size * PIP_GAP / BASE_SIZE + 0.5))
-    local height = max(1, floor((size - 2 * db.y - gap * (count - 1)) / count))
+    local height = max(1, floor((size - 2 * (db.y + pad) - gap * (count - 1)) / count))
     column:ClearAllPoints()
-    column:SetPoint("TOPLEFT", db.x, -db.y)
+    column:SetPoint("TOPLEFT", db.x + pad, -(db.y + pad))
     column:SetSize(width, count * height + (count - 1) * gap)
     for k = 1, max(count, #column.pips) do
         local pip = column.pips[k]
@@ -207,12 +222,32 @@ local function layoutColumn(column)
             pip:ClearAllPoints()
             pip:SetPoint("TOPLEFT", 0, -(k - 1) * (height + gap))
             pip:SetSize(width, height)
+            pip.outline:SetShown(look.outline == true)
+            if look.fill then pip.fill:SetTexture(look.fill) else pip.fill:SetColorTexture(1, 1, 1, 1) end
             pip:Show()
         else
             pip:Hide()
         end
     end
+    local border = column.border
+    if look.edgeFile and not border and BackdropTemplateMixin then
+        border = CreateFrame("Frame", nil, column, "BackdropTemplate")
+        border:SetFrameLevel(column:GetFrameLevel() + 1)
+        column.border = border
+    end
+    if border then
+        border:SetShown(look.edgeFile ~= nil)
+        if look.edgeFile then
+            border:ClearAllPoints()
+            border:SetPoint("TOPLEFT", -pad, pad)
+            border:SetPoint("BOTTOMRIGHT", pad, -pad)
+            border:SetBackdrop({ edgeFile = look.edgeFile, edgeSize = look.edgeSize })
+            border:SetBackdropBorderColor(look.r, look.g, look.b, 1)
+        end
+    end
     local plus = column.plus
+    plus:ClearAllPoints()
+    plus:SetPoint("BOTTOMLEFT", column, "BOTTOMRIGHT", pad + 1, -1)
     if not plus:SetFont(db.font, PLUS_SIZE, fontFlags) then plus:SetFont(DEFAULT_FONT, PLUS_SIZE, fontFlags) end
     local r, g, b = CreateColorFromHexString(db.color):GetRGB()
     plus:SetTextColor(r, g, b)
@@ -225,7 +260,6 @@ local function columnOf(button)
         column = CreateFrame("Frame", nil, holderOf(button))
         column.pips = {}
         column.plus = column:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
-        column.plus:SetPoint("BOTTOMLEFT", column, "BOTTOMRIGHT", 1, -1)
         column.plus:SetText("+")
         column.plus:SetAlpha(0)
         if not fontFlags then fontFlags = select(3, column.plus:GetFont()) end
@@ -436,6 +470,15 @@ local function displayChoices()
     return choices:GetData()
 end
 
+local function pipStyleChoices()
+    local choices = Settings.CreateControlTextContainer()
+    choices:Add("flat", "Flat")
+    choices:Add("sheen", "Sheen")
+    choices:Add("tooltip", "Sheen, tooltip border")
+    choices:Add("edge", "Sheen, slot edge")
+    return choices:GetData()
+end
+
 local function decimalChoices()
     local choices = Settings.CreateControlTextContainer()
     choices:Add(0, "None (3)")
@@ -461,7 +504,7 @@ local onChange = {
     display = setDisplay,
     pips = setPipCount,
 }
-local choicesOf = { font = fontChoices, decimals = decimalChoices, display = displayChoices }
+local choicesOf = { font = fontChoices, decimals = decimalChoices, display = displayChoices, pipStyle = pipStyleChoices }
 
 local function registerOptions()
     CastCountDB = CastCountDB or {}
